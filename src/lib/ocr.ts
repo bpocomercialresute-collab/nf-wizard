@@ -43,8 +43,8 @@ async function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
 // Cinza + esticamento de contraste (percentis 2/98) + upscale controlado.
 function preprocess(src: HTMLCanvasElement): HTMLCanvasElement {
   const longest = Math.max(src.width, src.height);
-  const target = 2200;
-  const scale = Math.min(3, Math.max(0.5, target / longest));
+  const target = 2600;
+  const scale = Math.min(3.5, Math.max(0.5, target / longest));
 
   const w = Math.round(src.width * scale);
   const h = Math.round(src.height * scale);
@@ -69,10 +69,10 @@ function preprocess(src: HTMLCanvasElement): HTMLCanvasElement {
     hist[g]!++;
   }
 
-  // Percentis 2% e 98% para esticar contraste ignorando outliers
+  // Percentis 1% e 99% para esticar contraste ignorando outliers
   const total = gray.length;
-  const loCut = total * 0.02;
-  const hiCut = total * 0.98;
+  const loCut = total * 0.01;
+  const hiCut = total * 0.99;
   let acc = 0;
   let lo = 0;
   let hi = 255;
@@ -151,12 +151,15 @@ export async function recognizeCanvas(
   deskew = true,
 ): Promise<OcrOutput> {
   const worker = await getWorker();
+  const { PSM } = await import("tesseract.js");
   const pre = preprocess(source);
 
   const angles = deskew ? [0, 270, 90, 180] : [0];
   let best: { text: string; confidence: number; angle: number; canvas: HTMLCanvasElement } | null =
     null;
 
+  // Fase 1: descobrir a orientação (PSM AUTO em cada rotação)
+  await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
   for (let idx = 0; idx < angles.length; idx++) {
     const angle = angles[idx]!;
     const rotated = rotate(pre, angle);
@@ -166,8 +169,7 @@ export async function recognizeCanvas(
     if (!best || combined > bestCombined) {
       best = { text: data.text, confidence: data.confidence, angle, canvas: rotated };
     }
-    onProgress(Math.round(((idx + 1) / angles.length) * 100));
-    // Saída antecipada quando a leitura já está claramente boa
+    onProgress(Math.round(((idx + 1) / angles.length) * 85));
     if (data.confidence >= 68 && scoreText(data.text) >= 6) {
       best = { text: data.text, confidence: data.confidence, angle, canvas: rotated };
       break;
@@ -175,8 +177,24 @@ export async function recognizeCanvas(
   }
 
   const chosen = best!;
+
+  // Fase 2: passes extras na orientação vencedora. Cada modo de segmentação
+  // captura regiões diferentes do documento; mesclar recupera mais campos.
+  let mergedText = chosen.text;
+  for (const psm of [PSM.SPARSE_TEXT, PSM.SINGLE_BLOCK]) {
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      const alt = await worker.recognize(chosen.canvas);
+      mergedText += "\n" + alt.data.text;
+    } catch {
+      // ignora falha de um modo específico
+    }
+  }
+  await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+  onProgress(100);
+
   return {
-    text: chosen.text,
+    text: mergedText,
     confidence: Math.round(chosen.confidence),
     angle: chosen.angle,
     previewUrl: chosen.canvas.toDataURL("image/jpeg", 0.85),
