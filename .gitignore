@@ -31,3 +31,9 @@ dist-ssr
 *.sln
 *.sw?
 desktop.ini
+
+# Tesseract model files (baixados em runtime/testes)
+*.traineddata
+
+# Amostra real de NF (documento fiscal — não versionar)
+imgs/modelo-nf.jpeg

@@ -43,6 +43,7 @@ type NFFile = {
   progress: number;
   ocrText: string;
   fields: NFFields;
+  confidence?: number;
   customName?: string | undefined;
   previewUrl: string;
   errorMsg?: string;
@@ -90,17 +91,28 @@ function parseNFFields(text: string): NFFields {
     if (last) fields.valor = `R$ ${last}`;
   }
 
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 3);
-  const companySuffix =
-    /\b(LTDA|S\.?A\.?|ME|EPP|EIRELI|DISTRIBUIDORA|COMERCIO|COMERCIAL|INDUSTRIA)\b/i;
-  const skipLine = /CNPJ|INSCR|NOTA|DANFE|NF-e|REGIME|TRIBUTARIO|ENDERECO|END\./i;
-  for (const line of lines) {
-    if (companySuffix.test(line) && !skipLine.test(line) && line.length < 80) {
-      fields.emitente = line.replace(/CNPJ.*$/, "").trim();
-      break;
+  // Canhoto/recibo: "RECEBEMOS DE <EMITENTE> - <CNPJ> OS PRODUTOS..."
+  const rec = text.match(
+    /RECEBEMOS\s+DE\s+(.+?)(?=\s*[-–]\s*\d{2}[.\d]|\s+CNPJ|\s+OS\s+PRODUTOS|\n|$)/i,
+  );
+  if (rec?.[1]) {
+    fields.emitente = rec[1].replace(/\s+/g, " ").trim();
+  }
+
+  // Fallback: primeira linha com sufixo empresarial
+  if (!fields.emitente) {
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 3);
+    const companySuffix =
+      /\b(LTDA|S\.?A\.?|ME|EPP|EIRELI|DISTRIBUIDORA|COMERCIO|COMERCIAL|INDUSTRIA)\b/i;
+    const skipLine = /CNPJ|INSCR|NOTA|DANFE|NF-e|REGIME|TRIBUTARIO|ENDERECO|END\./i;
+    for (const line of lines) {
+      if (companySuffix.test(line) && !skipLine.test(line) && line.length < 80) {
+        fields.emitente = line.replace(/CNPJ.*$/, "").trim();
+        break;
+      }
     }
   }
 
@@ -134,28 +146,15 @@ function buildName(pattern: string, fields: NFFields, ext: string): string {
 
 // ---- OCR Processing ----
 
-async function ocrImage(
-  file: File,
-  onProgress: (n: number) => void,
-): Promise<{ ocrText: string; previewUrl: string }> {
-  const previewUrl = URL.createObjectURL(file);
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("por+eng", 1, {
-    logger: (m: { status: string; progress: number }) => {
-      if (m.status === "recognizing text") onProgress(Math.round(m.progress * 100));
-    },
-  });
-  const {
-    data: { text },
-  } = await worker.recognize(file);
-  await worker.terminate();
-  return { ocrText: text, previewUrl };
+type OcrResult = { ocrText: string; previewUrl: string; confidence: number };
+
+async function ocrImage(file: File, onProgress: (n: number) => void): Promise<OcrResult> {
+  const { ocrImageBlob } = await import("../lib/ocr");
+  const r = await ocrImageBlob(file, onProgress);
+  return { ocrText: r.text, previewUrl: r.previewUrl, confidence: r.confidence };
 }
 
-async function ocrPDF(
-  file: File,
-  onProgress: (n: number) => void,
-): Promise<{ ocrText: string; previewUrl: string }> {
+async function ocrPDF(file: File, onProgress: (n: number) => void): Promise<OcrResult> {
   const pdfjs = await import("pdfjs-dist");
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -166,9 +165,9 @@ async function ocrPDF(
 
   const ab = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: ab }).promise;
-  onProgress(10);
+  onProgress(8);
 
-  // Try embedded text first
+  // Texto embutido primeiro (PDF nativo — orientação correta, sem OCR)
   let embeddedText = "";
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -176,44 +175,46 @@ async function ocrPDF(
     embeddedText +=
       tc.items.map((it) => ("str" in it ? (it as { str: string }).str : "")).join(" ") + "\n";
   }
-  onProgress(50);
+  onProgress(30);
 
-  // Render first page for preview
+  // Renderiza página 1 para preview
   const page1 = await pdf.getPage(1);
-  const vp = page1.getViewport({ scale: 1.5 });
+  const vp = page1.getViewport({ scale: 2 });
   const canvas = document.createElement("canvas");
   canvas.width = vp.width;
   canvas.height = vp.height;
   await page1.render({ canvas, canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
-  const previewUrl = canvas.toDataURL("image/jpeg", 0.85);
-  onProgress(70);
+  let previewUrl = canvas.toDataURL("image/jpeg", 0.85);
 
-  let ocrText = embeddedText.trim();
+  const ocrText = embeddedText.trim();
 
-  // If embedded text too sparse, OCR rendered pages
+  // PDF escaneado (sem texto embutido): OCR com correção de orientação
   if (ocrText.replace(/\s/g, "").length < 80) {
-    const { createWorker } = await import("tesseract.js");
-    const worker = await createWorker("por+eng");
+    const { recognizeCanvas } = await import("../lib/ocr");
     let allText = "";
+    let confSum = 0;
     for (let i = 1; i <= pdf.numPages; i++) {
       const pg = await pdf.getPage(i);
-      const v = pg.getViewport({ scale: 2 });
+      const v = pg.getViewport({ scale: 2.5 });
       const c = document.createElement("canvas");
       c.width = v.width;
       c.height = v.height;
       await pg.render({ canvas: c, canvasContext: c.getContext("2d")!, viewport: v }).promise;
-      const {
-        data: { text },
-      } = await worker.recognize(c);
-      allText += text + "\n";
-      onProgress(70 + Math.round((i / pdf.numPages) * 25));
+      const r = await recognizeCanvas(
+        c,
+        (n) => onProgress(30 + Math.round(((i - 1 + n / 100) / pdf.numPages) * 65)),
+        true,
+      );
+      allText += r.text + "\n";
+      confSum += r.confidence;
+      if (i === 1) previewUrl = r.previewUrl;
     }
-    await worker.terminate();
-    ocrText = allText;
+    onProgress(100);
+    return { ocrText: allText, previewUrl, confidence: Math.round(confSum / pdf.numPages) };
   }
 
   onProgress(100);
-  return { ocrText, previewUrl };
+  return { ocrText, previewUrl, confidence: 100 };
 }
 
 // ---- Component ----
@@ -303,8 +304,9 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       title: "3. Importe as notas",
       body: (
         <>
-          Arraste os arquivos ou clique na área de upload. Aceita JPG, PNG e PDF — vários de uma
-          vez.
+          Arraste ou clique na área de upload. Aceita JPG, PNG e PDF — vários de uma vez. Fotos{" "}
+          <strong>retas, nítidas e bem iluminadas</strong> (sem sombra) leem muito melhor. Papel
+          girado é corrigido sozinho.
         </>
       ),
     },
@@ -323,8 +325,8 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       title: "5. Confira e ajuste",
       body: (
         <>
-          Clique num arquivo pra ver o texto e os campos. Edite o nome gerado se quiser, ou use{" "}
-          <strong>Re-processar</strong> se o OCR errar.
+          Clique num arquivo pra ver o texto. <strong>Edite qualquer campo</strong> (número, data,
+          emitente…) e o nome se refaz sozinho. O selo mostra a confiança da leitura.
         </>
       ),
     },
@@ -478,12 +480,12 @@ function Index() {
 
     try {
       const onProg = (n: number) => update({ progress: n });
-      const { ocrText, previewUrl } = isImage
+      const { ocrText, previewUrl, confidence } = isImage
         ? await ocrImage(file, onProg)
         : await ocrPDF(file, onProg);
 
       const fields = parseNFFields(ocrText);
-      update({ status: "concluido", progress: 100, ocrText, fields, previewUrl });
+      update({ status: "concluido", progress: 100, ocrText, fields, previewUrl, confidence });
     } catch (err) {
       update({
         status: "erro",
@@ -607,15 +609,21 @@ function Index() {
     ? displayName.slice(0, -(activeExt.length + 1))
     : displayName;
 
-  const extractedFields = activeFile
-    ? [
-        { label: "Número NF", value: activeFile.fields.numero },
-        { label: "Data", value: activeFile.fields.data },
-        { label: "Emitente", value: activeFile.fields.emitente },
-        { label: "CNPJ", value: activeFile.fields.cnpj },
-        { label: "Valor Total", value: activeFile.fields.valor },
-      ]
-    : [];
+  const extractedFields: { key: keyof NFFields; label: string; value?: string | undefined }[] =
+    activeFile
+      ? [
+          { key: "numero", label: "Número NF", value: activeFile.fields.numero },
+          { key: "data", label: "Data", value: activeFile.fields.data },
+          { key: "emitente", label: "Emitente", value: activeFile.fields.emitente },
+          { key: "cnpj", label: "CNPJ", value: activeFile.fields.cnpj },
+          { key: "valor", label: "Valor Total", value: activeFile.fields.valor },
+        ]
+      : [];
+
+  const setField = (id: string, key: keyof NFFields, value: string) =>
+    setNfFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, fields: { ...f.fields, [key]: value } } : f)),
+    );
 
   // ---- Render ----
 
@@ -912,8 +920,30 @@ function Index() {
 
                 {/* Campos extraídos */}
                 <div className="surface rounded-2xl border border-border/70 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Campos extraídos</h3>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold">Campos extraídos</h3>
+                      {activeFile.status === "concluido" &&
+                        typeof activeFile.confidence === "number" && (
+                          <span
+                            title="Confiança da leitura OCR"
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              activeFile.confidence >= 70
+                                ? "bg-success/15 text-success"
+                                : activeFile.confidence >= 45
+                                  ? "bg-warning/15 text-warning"
+                                  : "bg-destructive/15 text-destructive"
+                            }`}
+                          >
+                            {activeFile.confidence >= 70 ? (
+                              <CheckCircle2 className="size-3" />
+                            ) : (
+                              <AlertTriangle className="size-3" />
+                            )}
+                            {activeFile.confidence}% leitura
+                          </span>
+                        )}
+                    </div>
                     {activeFile.status === "concluido" && (
                       <button
                         type="button"
@@ -926,32 +956,42 @@ function Index() {
                           setActiveId(null);
                           processFile(activeFile.file);
                         }}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
                       >
                         <RefreshCw className="size-3" />
                         Re-processar
                       </button>
                     )}
                   </div>
+                  {activeFile.status === "concluido" &&
+                    typeof activeFile.confidence === "number" &&
+                    activeFile.confidence < 45 && (
+                      <p className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground">
+                        Leitura de baixa qualidade. Tente uma foto mais nítida, reta e bem
+                        iluminada, sem sombra sobre o papel.
+                      </p>
+                    )}
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Confira e edite se o OCR errar — o nome do arquivo se atualiza sozinho.
+                  </p>
                   <div
                     id="preview-fields"
                     className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
                   >
                     {extractedFields.map((f) => (
                       <div
-                        key={f.label}
-                        className="rounded-xl border border-border bg-card/60 p-3 transition hover:border-primary/60"
+                        key={f.key}
+                        className="rounded-xl border border-border bg-card/60 p-3 transition focus-within:border-primary hover:border-primary/60"
                       >
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
                           {f.label}
-                        </p>
-                        <p
-                          className={`mt-1 truncate text-sm font-medium ${
-                            f.value ? "" : "text-muted-foreground italic"
-                          }`}
-                        >
-                          {f.value ?? "não identificado"}
-                        </p>
+                        </label>
+                        <input
+                          value={f.value ?? ""}
+                          placeholder="não identificado"
+                          onChange={(e) => setField(activeFile.id, f.key, e.target.value)}
+                          className="mt-1 w-full bg-transparent text-sm font-medium text-foreground outline-none placeholder:font-normal placeholder:italic placeholder:text-muted-foreground"
+                        />
                       </div>
                     ))}
                   </div>
