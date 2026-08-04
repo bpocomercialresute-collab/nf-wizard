@@ -28,7 +28,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 type NFFields = {
   numero?: string;
   data?: string;
-  emitente?: string;
+  destinatario?: string;
   cnpj?: string;
   valor?: string;
 };
@@ -67,11 +67,11 @@ function normalizeCnpj(raw: string): string | undefined {
 function parseNFFields(text: string): NFFields {
   const fields: NFFields = {};
 
-  // CNPJ do EMITENTE tem prioridade: "RECEBEMOS DE <nome> - <CNPJ> OS PRODUTOS"
-  const emitCnpj = text.match(
-    /RECEBEMOS\s+DE\s+.+?[-–]\s*(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})/i,
+  // CNPJ do DESTINATÁRIO tem prioridade: rótulo "CPF/CNPJ: <numero>"
+  const destCnpj = text.match(
+    /CPF\/?CNPJ\s*:?\s*(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})/i,
   )?.[1];
-  const cnpj = emitCnpj ? normalizeCnpj(emitCnpj) : normalizeCnpj(text);
+  const cnpj = destCnpj ? normalizeCnpj(destCnpj) : normalizeCnpj(text);
   if (cnpj) fields.cnpj = cnpj;
 
   const numPatterns = [
@@ -111,29 +111,10 @@ function parseNFFields(text: string): NFFields {
     if (max) fields.valor = `R$ ${max}`;
   }
 
-  // Canhoto/recibo: "RECEBEMOS DE <EMITENTE> - <CNPJ> OS PRODUTOS..."
-  const rec = text.match(
-    /RECEBEMOS\s+DE\s+(.+?)(?=\s*[-–]\s*\d{2}[.\d]|\s+CNPJ|\s+OS\s+PRODUTOS|\n|$)/i,
-  );
-  if (rec?.[1]) {
-    fields.emitente = rec[1].replace(/\s+/g, " ").trim();
-  }
-
-  // Fallback: primeira linha com sufixo empresarial
-  if (!fields.emitente) {
-    const lines = text
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 3);
-    const companySuffix =
-      /\b(LTDA|S\.?A\.?|ME|EPP|EIRELI|DISTRIBUIDORA|COMERCIO|COMERCIAL|INDUSTRIA)\b/i;
-    const skipLine = /CNPJ|INSCR|NOTA|DANFE|NF-e|REGIME|TRIBUTARIO|ENDERECO|END\./i;
-    for (const line of lines) {
-      if (companySuffix.test(line) && !skipLine.test(line) && line.length < 80) {
-        fields.emitente = line.replace(/CNPJ.*$/, "").trim();
-        break;
-      }
-    }
+  // Nome do DESTINATÁRIO: rótulo "DESTINATÁRIO: <nome>" até vírgula/CIDADE/traço
+  const dest = text.match(/DESTINAT[ÁA]RIO\s*:?\s*(.+?)(?=\s*,|\s+CIDADE|\s*[-–]\s|\n|$)/i);
+  if (dest?.[1]) {
+    fields.destinatario = dest[1].replace(/\s+/g, " ").trim();
   }
 
   return fields;
@@ -154,7 +135,7 @@ function buildName(pattern: string, fields: NFFields, ext: string): string {
   const values: Record<string, string | undefined> = {
     NUMERO: fields.numero,
     DATA: fields.data?.replace(/\//g, "-"),
-    EMITENTE: fields.emitente,
+    DESTINATARIO: fields.destinatario,
     CNPJ: fields.cnpj,
     VALOR: fields.valor,
   };
@@ -256,7 +237,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const tokens = ["{NUMERO}", "{DATA}", "{EMITENTE}", "{CNPJ}", "{VALOR}"];
+const tokens = ["{NUMERO}", "{DATA}", "{DESTINATARIO}", "{CNPJ}", "{VALOR}"];
 
 const statusConfig: Record<Status, { label: string; className: string; icon: typeof Clock }> = {
   aguardando: {
@@ -335,7 +316,7 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       title: "4. OCR automático",
       body: (
         <>
-          O texto é lido e os campos (número, data, emitente, CNPJ, valor) preenchem sozinhos.
+          O texto é lido e os campos (número, data, destinatário, CNPJ, valor) preenchem sozinhos.
           Escolha o motor no topo: <strong>Nuvem</strong> (mais preciso, envia a imagem ao serviço)
           ou <strong>Local</strong> (privado, roda no navegador).
         </>
@@ -347,7 +328,7 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       body: (
         <>
           Clique num arquivo pra ver o texto. <strong>Edite qualquer campo</strong> (número, data,
-          emitente…) e o nome se refaz sozinho. O selo mostra a confiança da leitura.
+          destinatário…) e o nome se refaz sozinho. O selo mostra a confiança da leitura.
         </>
       ),
     },
@@ -440,7 +421,7 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
 function Index() {
   const [nfFiles, setNfFiles] = useState<NFFile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [pattern, setPattern] = useState("NF_{NUMERO}_{DATA}_{EMITENTE}");
+  const [pattern, setPattern] = useState("NF_{NUMERO}_{DATA}_{DESTINATARIO}");
   const [outputDir, setOutputDir] = useState<FileSystemDirectoryHandle | null>(null);
   const [outputDirName, setOutputDirName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -449,19 +430,32 @@ function Index() {
   const [apiKey, setApiKey] = useState("");
   const patternRef = useRef<HTMLInputElement>(null);
 
-  // Carrega preferências salvas (só no cliente)
+  // Carrega preferências salvas uma vez (só no cliente).
   useEffect(() => {
     const e = localStorage.getItem("nfw_engine");
     if (e === "local" || e === "cloud") setEngine(e);
     const k = localStorage.getItem("nfw_apikey");
-    if (k) setApiKey(k);
+    if (k !== null) setApiKey(k);
   }, []);
-  useEffect(() => {
-    localStorage.setItem("nfw_engine", engine);
-  }, [engine]);
-  useEffect(() => {
-    localStorage.setItem("nfw_apikey", apiKey);
-  }, [apiKey]);
+
+  // Grava NA AÇÃO do usuário (sem effect, evita apagar no mount). Fica
+  // salvo para sempre até o usuário mudar.
+  const chooseEngine = (e: "cloud" | "local") => {
+    setEngine(e);
+    try {
+      localStorage.setItem("nfw_engine", e);
+    } catch {
+      /* ignora storage indisponível */
+    }
+  };
+  const changeApiKey = (k: string) => {
+    setApiKey(k);
+    try {
+      localStorage.setItem("nfw_apikey", k);
+    } catch {
+      /* ignora storage indisponível */
+    }
+  };
 
   const activeFile = nfFiles.find((f) => f.id === activeId) ?? nfFiles[0] ?? null;
   const selectedCount = nfFiles.filter((f) => f.selected).length;
@@ -521,9 +515,9 @@ function Index() {
         let ocrText: string;
         let previewUrl: string;
         let confidence: number | undefined;
-        let note: string | undefined;
 
         if (isImage && engine === "cloud") {
+          // Nuvem selecionada = nuvem. Sem cair para local escondido.
           try {
             const { ocrCloud } = await import("../lib/ocr-cloud");
             const r = await ocrCloud(file, apiKey, onProg);
@@ -531,14 +525,10 @@ function Index() {
             previewUrl = r.previewUrl;
             confidence = 96; // OCR.space engine 2 — leitura de alta precisão
           } catch (cloudErr) {
-            // Nuvem falhou (limite/rede): cai para OCR local automaticamente
-            const r = await ocrImage(file, onProg);
-            ocrText = r.ocrText;
-            previewUrl = r.previewUrl;
-            confidence = r.confidence;
-            note = `OCR em nuvem indisponível (${
-              cloudErr instanceof Error ? cloudErr.message : "erro"
-            }). Usei OCR local — confira os campos.`;
+            const msg = cloudErr instanceof Error ? cloudErr.message : String(cloudErr);
+            throw new Error(
+              `OCR em nuvem falhou: ${msg}. Verifique sua chave de API OCR.space (ou troque para Local).`,
+            );
           }
         } else {
           const r = isImage ? await ocrImage(file, onProg) : await ocrPDF(file, onProg);
@@ -555,7 +545,6 @@ function Index() {
           fields,
           previewUrl,
           confidence,
-          note,
         });
       } catch (err) {
         update({
@@ -687,7 +676,7 @@ function Index() {
       ? [
           { key: "numero", label: "Número NF", value: activeFile.fields.numero },
           { key: "data", label: "Data", value: activeFile.fields.data },
-          { key: "emitente", label: "Emitente", value: activeFile.fields.emitente },
+          { key: "destinatario", label: "Destinatário", value: activeFile.fields.destinatario },
           { key: "cnpj", label: "CNPJ", value: activeFile.fields.cnpj },
           { key: "valor", label: "Valor Total", value: activeFile.fields.valor },
         ]
@@ -783,7 +772,7 @@ function Index() {
             <div className="flex shrink-0 rounded-xl border border-border bg-secondary p-1">
               <button
                 type="button"
-                onClick={() => setEngine("cloud")}
+                onClick={() => chooseEngine("cloud")}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   engine === "cloud"
                     ? "bg-primary text-primary-foreground shadow-sm"
@@ -795,7 +784,7 @@ function Index() {
               </button>
               <button
                 type="button"
-                onClick={() => setEngine("local")}
+                onClick={() => chooseEngine("local")}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   engine === "local"
                     ? "bg-primary text-primary-foreground shadow-sm"
@@ -816,7 +805,7 @@ function Index() {
                 <input
                   id="ocr-key"
                   value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  onChange={(e) => changeApiKey(e.target.value)}
                   placeholder="helloworld (demo — limitada)"
                   className="min-w-0 flex-1 rounded-lg border border-border bg-input/60 px-3 py-2 font-mono text-xs outline-none transition focus:border-primary"
                 />
