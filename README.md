@@ -50,15 +50,15 @@ Estilo:
 
 Importante: Não escreva nenhuma lógica JavaScript. Deixe os IDs exatamente como especificados — o JS será integrado separadamente. Pode adicionar dados mockados estáticos nos componentes só para visualização.
 
-This project was built with [Lovable](https://lovable.dev).
+This project was built with [NF Wizard](https://lovable.dev).
 
-## Build with Lovable
+## Build with NF Wizard
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/908d4457-ea5f-4e1c-b69f-3b999df992be).
+Continue developing this project in the [NF Wizard editor](https://lovable.dev/projects/908d4457-ea5f-4e1c-b69f-3b999df992be).
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+- **Ship faster**: describe what you want to build and NF Wizard handles the code.
+- **Stay in sync**: every change made in NF Wizard is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into NF Wizard, ready for your next prompt.
 
 ## Development
 
