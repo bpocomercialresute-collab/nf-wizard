@@ -18,6 +18,8 @@ import {
   BookOpen,
   Type,
   MousePointerClick,
+  Cloud,
+  Lock,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 
@@ -47,15 +49,30 @@ type NFFile = {
   customName?: string | undefined;
   previewUrl: string;
   errorMsg?: string;
+  note?: string | undefined;
 };
 
 // ---- NF Field Parser ----
 
+// Tolera espaços/pontuação que o OCR insere entre os grupos do CNPJ e
+// normaliza para XX.XXX.XXX/XXXX-XX.
+const CNPJ_RX = /(\d{2})[.\s]?(\d{3})[.\s]?(\d{3})[/\s]?(\d{4})[-\s]?(\d{2})/;
+
+function normalizeCnpj(raw: string): string | undefined {
+  const m = raw.match(CNPJ_RX);
+  if (!m) return undefined;
+  return `${m[1]}.${m[2]}.${m[3]}/${m[4]}-${m[5]}`;
+}
+
 function parseNFFields(text: string): NFFields {
   const fields: NFFields = {};
 
-  const cnpjMatch = text.match(/\d{2}\.?\d{3}\.?\d{3}[/\\]?\d{4}-?\d{2}/);
-  if (cnpjMatch) fields.cnpj = cnpjMatch[0];
+  // CNPJ do EMITENTE tem prioridade: "RECEBEMOS DE <nome> - <CNPJ> OS PRODUTOS"
+  const emitCnpj = text.match(
+    /RECEBEMOS\s+DE\s+.+?[-–]\s*(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})/i,
+  )?.[1];
+  const cnpj = emitCnpj ? normalizeCnpj(emitCnpj) : normalizeCnpj(text);
+  if (cnpj) fields.cnpj = cnpj;
 
   const numPatterns = [
     /N[Oo°º]\.?\s*(\d{3}[\d.]{0,9})/,
@@ -86,9 +103,12 @@ function parseNFFields(text: string): NFFields {
     }
   }
   if (!fields.valor) {
-    const allValues = [...text.matchAll(/R\$\s*([\d.,]{4,})/g)];
-    const last = allValues[allValues.length - 1]?.[1];
-    if (last) fields.valor = `R$ ${last}`;
+    // Fallback robusto (texto embaralhado do OCR em nuvem): pega o maior
+    // token no formato de moeda BR (1.234,56) — o total costuma ser o maior.
+    const tokens = [...text.matchAll(/\d{1,3}(?:\.\d{3})*,\d{2}/g)].map((m) => m[0]);
+    const toNumber = (t: string) => parseFloat(t.replace(/\./g, "").replace(",", "."));
+    const max = tokens.sort((a, b) => toNumber(b) - toNumber(a))[0];
+    if (max) fields.valor = `R$ ${max}`;
   }
 
   // Canhoto/recibo: "RECEBEMOS DE <EMITENTE> - <CNPJ> OS PRODUTOS..."
@@ -315,8 +335,9 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       title: "4. OCR automático",
       body: (
         <>
-          O texto é lido na hora e os campos (número, data, emitente, CNPJ, valor) são preenchidos
-          sozinhos. Tudo roda no seu navegador.
+          O texto é lido e os campos (número, data, emitente, CNPJ, valor) preenchem sozinhos.
+          Escolha o motor no topo: <strong>Nuvem</strong> (mais preciso, envia a imagem ao serviço)
+          ou <strong>Local</strong> (privado, roda no navegador).
         </>
       ),
     },
@@ -424,7 +445,23 @@ function Index() {
   const [outputDirName, setOutputDirName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [engine, setEngine] = useState<"cloud" | "local">("cloud");
+  const [apiKey, setApiKey] = useState("");
   const patternRef = useRef<HTMLInputElement>(null);
+
+  // Carrega preferências salvas (só no cliente)
+  useEffect(() => {
+    const e = localStorage.getItem("nfw_engine");
+    if (e === "local" || e === "cloud") setEngine(e);
+    const k = localStorage.getItem("nfw_apikey");
+    if (k) setApiKey(k);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("nfw_engine", engine);
+  }, [engine]);
+  useEffect(() => {
+    localStorage.setItem("nfw_apikey", apiKey);
+  }, [apiKey]);
 
   const activeFile = nfFiles.find((f) => f.id === activeId) ?? nfFiles[0] ?? null;
   const selectedCount = nfFiles.filter((f) => f.selected).length;
@@ -452,47 +489,83 @@ function Index() {
     [],
   );
 
-  const processFile = useCallback(async (file: File) => {
-    const id = crypto.randomUUID();
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    const isImage = ["jpg", "jpeg", "png"].includes(ext);
+  const processFile = useCallback(
+    async (file: File) => {
+      const id = crypto.randomUUID();
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const isImage = ["jpg", "jpeg", "png"].includes(ext);
 
-    const entry: NFFile = {
-      id,
-      file,
-      ext,
-      type: isImage ? "img" : "pdf",
-      status: "aguardando",
-      selected: true,
-      progress: 0,
-      ocrText: "",
-      fields: {},
-      previewUrl: "",
-    };
+      const entry: NFFile = {
+        id,
+        file,
+        ext,
+        type: isImage ? "img" : "pdf",
+        status: "aguardando",
+        selected: true,
+        progress: 0,
+        ocrText: "",
+        fields: {},
+        previewUrl: "",
+      };
 
-    setNfFiles((prev) => [...prev, entry]);
-    setActiveId(id);
+      setNfFiles((prev) => [...prev, entry]);
+      setActiveId(id);
 
-    const update = (p: Partial<NFFile>) =>
-      setNfFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...p } : f)));
+      const update = (p: Partial<NFFile>) =>
+        setNfFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...p } : f)));
 
-    update({ status: "processando" });
+      update({ status: "processando" });
 
-    try {
-      const onProg = (n: number) => update({ progress: n });
-      const { ocrText, previewUrl, confidence } = isImage
-        ? await ocrImage(file, onProg)
-        : await ocrPDF(file, onProg);
+      try {
+        const onProg = (n: number) => update({ progress: n });
+        let ocrText: string;
+        let previewUrl: string;
+        let confidence: number | undefined;
+        let note: string | undefined;
 
-      const fields = parseNFFields(ocrText);
-      update({ status: "concluido", progress: 100, ocrText, fields, previewUrl, confidence });
-    } catch (err) {
-      update({
-        status: "erro",
-        errorMsg: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, []);
+        if (isImage && engine === "cloud") {
+          try {
+            const { ocrCloud } = await import("../lib/ocr-cloud");
+            const r = await ocrCloud(file, apiKey, onProg);
+            ocrText = r.text;
+            previewUrl = r.previewUrl;
+            confidence = 96; // OCR.space engine 2 — leitura de alta precisão
+          } catch (cloudErr) {
+            // Nuvem falhou (limite/rede): cai para OCR local automaticamente
+            const r = await ocrImage(file, onProg);
+            ocrText = r.ocrText;
+            previewUrl = r.previewUrl;
+            confidence = r.confidence;
+            note = `OCR em nuvem indisponível (${
+              cloudErr instanceof Error ? cloudErr.message : "erro"
+            }). Usei OCR local — confira os campos.`;
+          }
+        } else {
+          const r = isImage ? await ocrImage(file, onProg) : await ocrPDF(file, onProg);
+          ocrText = r.ocrText;
+          previewUrl = r.previewUrl;
+          confidence = r.confidence;
+        }
+
+        const fields = parseNFFields(ocrText);
+        update({
+          status: "concluido",
+          progress: 100,
+          ocrText,
+          fields,
+          previewUrl,
+          confidence,
+          note,
+        });
+      } catch (err) {
+        update({
+          status: "erro",
+          errorMsg: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [engine, apiKey],
+  );
 
   const handleFiles = useCallback(
     (list: FileList | null) => {
@@ -691,6 +764,77 @@ function Index() {
               </button>
             ))}
           </div>
+        </section>
+
+        {/* Zona 1a — Motor de OCR */}
+        <section
+          className="surface animate-rise rounded-2xl border border-border/70 p-5"
+          style={{ animationDelay: "40ms" }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Motor de leitura (OCR)</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {engine === "cloud"
+                  ? "Nuvem: máxima precisão. A imagem é enviada ao serviço OCR.space."
+                  : "Local: roda no navegador, 100% privado. Menor precisão em fotos ruins."}
+              </p>
+            </div>
+            <div className="flex shrink-0 rounded-xl border border-border bg-secondary p-1">
+              <button
+                type="button"
+                onClick={() => setEngine("cloud")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  engine === "cloud"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Cloud className="size-4" />
+                Nuvem
+              </button>
+              <button
+                type="button"
+                onClick={() => setEngine("local")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  engine === "local"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Lock className="size-4" />
+                Local
+              </button>
+            </div>
+          </div>
+          {engine === "cloud" && (
+            <div className="mt-3 border-t border-border/60 pt-3">
+              <label htmlFor="ocr-key" className="text-xs font-medium text-muted-foreground">
+                Chave da API OCR.space
+              </label>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <input
+                  id="ocr-key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="helloworld (demo — limitada)"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-input/60 px-3 py-2 font-mono text-xs outline-none transition focus:border-primary"
+                />
+                <a
+                  href="https://ocr.space/ocrapi/freekey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+                >
+                  Pegar chave grátis
+                </a>
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Vazio usa a chave demo (poucas leituras/dia). Uma chave grátis própria libera uso
+                normal. Guardada só no seu navegador.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Zona 1b — Pasta de destino */}
@@ -963,6 +1107,11 @@ function Index() {
                       </button>
                     )}
                   </div>
+                  {activeFile.note && (
+                    <p className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground">
+                      {activeFile.note}
+                    </p>
+                  )}
                   {activeFile.status === "concluido" &&
                     typeof activeFile.confidence === "number" &&
                     activeFile.confidence < 45 && (
