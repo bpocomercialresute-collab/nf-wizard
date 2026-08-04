@@ -26,7 +26,33 @@
           "type": "object",
           "properties": {}
         },
-        "outputSchema": null
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token",
+                  "description"
+                ]
+              }
+            }
+          },
+          "required": [
+            "tokens"
+          ]
+        }
       },
       {
         "name": "build_filename",
@@ -76,7 +102,26 @@
             "extension"
           ]
         },
-        "outputSchema": null
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "filename": {
+              "type": "string"
+            },
+            "base": {
+              "type": "string"
+            },
+            "extension": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "filename",
+            "base",
+            "extension"
+          ]
+        }
       }
     ]
   }

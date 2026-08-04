@@ -29,6 +29,11 @@ export default defineTool({
     cnpj: z.string().optional().describe("CNPJ do emitente."),
     valor: z.string().optional().describe("Valor total da nota. Ex.: R$ 4.820,55"),
   },
+  outputSchema: {
+    filename: z.string(),
+    base: z.string(),
+    extension: z.string(),
+  },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   handler: ({ pattern, extension, numero, data, emitente, cnpj, valor }) => {
     const values: Record<string, string | undefined> = {
