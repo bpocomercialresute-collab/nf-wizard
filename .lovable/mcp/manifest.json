@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "nf-renamer-tool",
+      "version": "0.1.0",
+      "title": "NF Renamer Tool"
+    },
+    "tools": [
+      {
+        "name": "list_pattern_tokens",
+        "title": "Listar tokens de padrão",
+        "description": "Lista os tokens disponíveis para montar o padrão de nome de arquivo de notas fiscais no NF Renamer.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token",
+                  "description"
+                ]
+              }
+            }
+          },
+          "required": [
+            "tokens"
+          ]
+        }
+      },
+      {
+        "name": "build_filename",
+        "title": "Montar nome do arquivo",
+        "description": "Aplica um padrão como NF_{NUMERO}_{DATA}_{EMITENTE} aos dados de uma nota fiscal e devolve o nome de arquivo final, já higienizado e com a extensão.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Padrão do nome, com tokens entre chaves. Ex.: NF_{NUMERO}_{DATA}_{EMITENTE}"
+            },
+            "extension": {
+              "type": "string",
+              "description": "Extensão do arquivo, com ou sem ponto. Ex.: pdf, .jpg, png"
+            },
+            "numero": {
+              "description": "Número da nota fiscal.",
+              "type": "string"
+            },
+            "data": {
+              "description": "Data de emissão. Ex.: 12/03/2026",
+              "type": "string"
+            },
+            "emitente": {
+              "description": "Razão social do emitente.",
+              "type": "string"
+            },
+            "cnpj": {
+              "description": "CNPJ do emitente.",
+              "type": "string"
+            },
+            "valor": {
+              "description": "Valor total da nota. Ex.: R$ 4.820,55",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pattern",
+            "extension"
+          ]
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "filename": {
+              "type": "string"
+            },
+            "base": {
+              "type": "string"
+            },
+            "extension": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "filename",
+            "base",
+            "extension"
+          ]
+        }
+      }
+    ]
+  }
+}
