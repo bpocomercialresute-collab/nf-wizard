@@ -19,7 +19,7 @@ import {
   Type,
   MousePointerClick,
 } from "lucide-react";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // ---- Types ----
 
@@ -235,7 +235,21 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const tokens = ["{NUMERO}", "{DATA}", "{DESTINATARIO}", "{CNPJ}", "{VALOR}"];
+const FIELD_OPTIONS = [
+  { token: "{NUMERO}", label: "Número NF" },
+  { token: "{DATA}", label: "Data" },
+  { token: "{DESTINATARIO}", label: "Destinatário" },
+  { token: "{CNPJ}", label: "CNPJ" },
+  { token: "{VALOR}", label: "Valor Total" },
+] as const;
+
+const FAKE_FIELDS: NFFields = {
+  numero: "000123",
+  data: "15/08/2026",
+  destinatario: "EMPRESA SA LTDA",
+  cnpj: "12.345.678/0001-90",
+  valor: "R$ 1.500,00",
+};
 
 const statusConfig: Record<Status, { label: string; className: string; icon: typeof Clock }> = {
   aguardando: {
@@ -278,13 +292,12 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
   const steps = [
     {
       icon: Type,
-      title: "1. Monte o padrão do nome",
+      title: "1. Escolha como salvar",
       body: (
         <>
-          Clique nos tokens (<code className="rounded bg-muted px-1 font-mono">{"{NUMERO}"}</code>,{" "}
-          <code className="rounded bg-muted px-1 font-mono">{"{DATA}"}</code>…) para inseri-los.
-          Eles viram os dados da nota. Padrão atual:{" "}
-          <code className="rounded bg-muted px-1 font-mono text-primary">{pattern}</code>
+          Em <strong>Como salvar o arquivo?</strong>, clique nos campos (Número NF, Data,
+          Destinatário…) para montar o nome. A ordem dos cliques é a ordem no nome. A prévia
+          mostra exatamente como vai ficar.
         </>
       ),
     },
@@ -418,12 +431,14 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
 function Index() {
   const [nfFiles, setNfFiles] = useState<NFFile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [pattern, setPattern] = useState("NF_{NUMERO}_{DATA}_{DESTINATARIO}");
+  const [activeTokens, setActiveTokens] = useState<string[]>(["{NUMERO}", "{DATA}", "{DESTINATARIO}"]);
   const [outputDir, setOutputDir] = useState<FileSystemDirectoryHandle | null>(null);
   const [outputDirName, setOutputDirName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const patternRef = useRef<HTMLInputElement>(null);
+
+  const pattern = activeTokens.length > 0 ? `NF_${activeTokens.join("_")}` : "NF_{NUMERO}";
+  const examplePreview = buildName(pattern, FAKE_FIELDS, "pdf");
 
   const activeFile = nfFiles.find((f) => f.id === activeId) ?? nfFiles[0] ?? null;
   const selectedCount = nfFiles.filter((f) => f.selected).length;
@@ -614,22 +629,6 @@ function Index() {
     URL.revokeObjectURL(url);
   };
 
-  // ---- Token insertion ----
-
-  const insertToken = (token: string) => {
-    const input = patternRef.current;
-    if (!input) return;
-    const s = input.selectionStart ?? input.value.length;
-    const e = input.selectionEnd ?? input.value.length;
-    const newVal = input.value.slice(0, s) + token + input.value.slice(e);
-    setPattern(newVal);
-    requestAnimationFrame(() => {
-      input.focus();
-      const pos = s + token.length;
-      input.setSelectionRange(pos, pos);
-    });
-  };
-
   // ---- Active file helpers ----
 
   const activeExt = activeFile?.ext ?? "";
@@ -695,30 +694,81 @@ function Index() {
       {showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
-        {/* Zona 1 — Padrão */}
+        {/* Zona 1 — Como salvar */}
         <section className="surface animate-rise rounded-2xl border border-border/70 p-5">
-          <label htmlFor="pattern-input" className="text-sm font-medium text-foreground">
-            Padrão do nome do arquivo
-          </label>
-          <input
-            id="pattern-input"
-            ref={patternRef}
-            value={pattern}
-            onChange={(e) => setPattern(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-border bg-input/60 px-4 py-3 font-mono text-sm text-foreground outline-none transition focus:border-primary focus:shadow-[var(--shadow-glow)]"
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Tokens disponíveis:</span>
-            {tokens.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => insertToken(t)}
-                className="rounded-full border border-border bg-secondary px-3 py-1 font-mono text-xs text-secondary-foreground transition hover:border-primary hover:bg-primary/15 hover:text-primary"
-              >
-                {t}
-              </button>
-            ))}
+          <p className="text-sm font-medium text-foreground">Como salvar o arquivo?</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Clique para adicionar campos ao nome. A ordem que você clicar é a ordem no arquivo.
+          </p>
+
+          {/* Chips disponíveis */}
+          <div className="mt-3">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Campos disponíveis
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FIELD_OPTIONS.filter((f) => !activeTokens.includes(f.token)).map((f) => (
+                <button
+                  key={f.token}
+                  type="button"
+                  onClick={() => setActiveTokens((prev) => [...prev, f.token])}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:bg-primary/10 hover:text-primary"
+                >
+                  <span className="text-primary">+</span>
+                  {f.label}
+                </button>
+              ))}
+              {FIELD_OPTIONS.every((f) => activeTokens.includes(f.token)) && (
+                <span className="text-xs italic text-muted-foreground">Todos os campos adicionados</span>
+              )}
+            </div>
+          </div>
+
+          {/* Chips ativos (em ordem) */}
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Nome do arquivo — em ordem
+            </p>
+            {activeTokens.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">
+                Nenhum campo selecionado — clique acima para adicionar.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground">
+                  NF
+                </span>
+                {activeTokens.map((token, idx) => {
+                  const f = FIELD_OPTIONS.find((x) => x.token === token)!;
+                  return (
+                    <span
+                      key={token}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
+                    >
+                      <span className="text-muted-foreground">{idx + 1}.</span>
+                      {f.label}
+                      <button
+                        type="button"
+                        title="Remover"
+                        onClick={() => setActiveTokens((prev) => prev.filter((t) => t !== token))}
+                        className="ml-0.5 rounded-full text-primary/60 transition hover:text-destructive"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Prévia do nome */}
+          <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3">
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="text-[11px] text-muted-foreground">Prévia do nome gerado:</p>
+              <p className="truncate font-mono text-xs font-medium text-foreground">{examplePreview}</p>
+            </div>
           </div>
         </section>
 
