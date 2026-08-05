@@ -21,9 +21,11 @@ import {
   Database,
   Save,
   Eye,
+  LogOut,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { saveNF, listNFs, storageUrl, fmtDate, type NFRecord } from "../lib/nf-storage";
+import { signOut, getUserEmail } from "../lib/auth";
 
 // ---- Types ----
 
@@ -733,6 +735,14 @@ function Index() {
           >
             <BookOpen className="size-4" />
             <span className="hidden sm:inline">Manual</span>
+          </button>
+          <button
+            type="button"
+            title={`Sair (${getUserEmail()})`}
+            onClick={async () => { await signOut(); window.location.reload(); }}
+            className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
+          >
+            <LogOut className="size-4" />
           </button>
         </div>
       </header>
