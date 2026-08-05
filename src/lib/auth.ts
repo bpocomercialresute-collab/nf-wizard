@@ -11,6 +11,8 @@ type Session = {
 
 const KEY = "nfw_session";
 
+// ---- Storage ----
+
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   try {
@@ -30,7 +32,8 @@ function clearSession() {
 }
 
 function isValid(s: Session): boolean {
-  return s.expires_at > Math.floor(Date.now() / 1000) + 60;
+  // Considera válido até 5 min antes de expirar
+  return s.expires_at > Math.floor(Date.now() / 1000) + 300;
 }
 
 export function isAuthenticated(): boolean {
@@ -42,10 +45,29 @@ export function getUserEmail(): string {
   return getSession()?.user_email ?? "";
 }
 
-export async function tryRefresh(): Promise<boolean> {
+// ---- Auto-refresh timer ----
+
+let _timer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRefresh() {
+  if (_timer) clearTimeout(_timer);
   const s = getSession();
-  if (!s) return false;
-  if (isValid(s)) return true;
+  if (!s) return;
+
+  // Dispara 5 min antes de expirar (mínimo 10 s)
+  const delay = Math.max(10_000, (s.expires_at - Math.floor(Date.now() / 1000) - 300) * 1000);
+
+  _timer = setTimeout(async () => {
+    const ok = await doRefresh();
+    if (ok) scheduleRefresh(); // reagenda com novo token
+  }, delay);
+}
+
+// ---- Core refresh ----
+
+async function doRefresh(): Promise<boolean> {
+  const s = getSession();
+  if (!s?.refresh_token) return false;
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
@@ -55,16 +77,32 @@ export async function tryRefresh(): Promise<boolean> {
     if (!res.ok) { clearSession(); return false; }
     const d = await res.json();
     saveSession({
-      access_token: d.access_token,
-      refresh_token: d.refresh_token,
-      expires_at: Math.floor(Date.now() / 1000) + (d.expires_in as number),
-      user_email: (d.user as { email: string }).email,
+      access_token: (d as { access_token: string }).access_token,
+      refresh_token: (d as { refresh_token: string }).refresh_token,
+      expires_at: Math.floor(Date.now() / 1000) + (d as { expires_in: number }).expires_in,
+      user_email: (d as { user: { email: string } }).user.email,
     });
     return true;
   } catch {
-    clearSession();
-    return false;
+    return false; // erro de rede — mantém sessão, tenta de novo depois
   }
+}
+
+// ---- Public API ----
+
+/**
+ * Verifica sessão: se válida retorna true, se expirada tenta renovar.
+ * Sempre inicia o auto-refresh após sucesso.
+ */
+export async function tryRefresh(): Promise<boolean> {
+  const s = getSession();
+  if (!s) return false;
+
+  let ok = isValid(s);
+  if (!ok) ok = await doRefresh();
+
+  if (ok) scheduleRefresh();
+  return ok;
 }
 
 export async function signIn(
@@ -80,8 +118,7 @@ export async function signIn(
     if (!res.ok) {
       const d = await res.json();
       const msg =
-        (d as { error_description?: string; msg?: string; error?: string })
-          .error_description ??
+        (d as { error_description?: string }).error_description ??
         (d as { msg?: string }).msg ??
         "Credenciais inválidas";
       return { ok: false, error: msg };
@@ -93,6 +130,7 @@ export async function signIn(
       expires_at: Math.floor(Date.now() / 1000) + (d as { expires_in: number }).expires_in,
       user_email: (d as { user: { email: string } }).user.email,
     });
+    scheduleRefresh(); // inicia auto-refresh imediatamente após login
     return { ok: true };
   } catch {
     return { ok: false, error: "Erro de conexão. Tente novamente." };
@@ -100,6 +138,7 @@ export async function signIn(
 }
 
 export async function signOut(): Promise<void> {
+  if (_timer) { clearTimeout(_timer); _timer = null; }
   const s = getSession();
   if (s) {
     await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
