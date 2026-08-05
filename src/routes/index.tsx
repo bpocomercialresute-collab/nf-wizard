@@ -235,6 +235,9 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+// Mude para true para reativar o seletor de campos no nome do arquivo.
+const PATTERN_UI_ENABLED = false;
+
 const FIELD_OPTIONS = [
   { token: "{NUMERO}", label: "Número NF" },
   { token: "{DATA}", label: "Data" },
@@ -437,7 +440,11 @@ function Index() {
   const [isDragging, setIsDragging] = useState(false);
   const [showManual, setShowManual] = useState(false);
 
-  const pattern = activeTokens.length > 0 ? `NF_${activeTokens.join("_")}` : "NF_{NUMERO}";
+  const pattern = PATTERN_UI_ENABLED
+    ? activeTokens.length > 0
+      ? `NF_${activeTokens.join("_")}`
+      : "NF_{NUMERO}"
+    : "NF_{NUMERO}";
   const examplePreview = buildName(pattern, FAKE_FIELDS, "pdf");
 
   const activeFile = nfFiles.find((f) => f.id === activeId) ?? nfFiles[0] ?? null;
@@ -694,8 +701,8 @@ function Index() {
       {showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
-        {/* Zona 1 — Como salvar */}
-        <section className="surface animate-rise rounded-2xl border border-border/70 p-5">
+        {/* Zona 1 — Como salvar (oculto quando PATTERN_UI_ENABLED = false) */}
+        {PATTERN_UI_ENABLED && <section className="surface animate-rise rounded-2xl border border-border/70 p-5">
           <p className="text-sm font-medium text-foreground">Como salvar o arquivo?</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Clique para adicionar campos ao nome. A ordem que você clicar é a ordem no arquivo.
@@ -770,7 +777,7 @@ function Index() {
               <p className="truncate font-mono text-xs font-medium text-foreground">{examplePreview}</p>
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* Zona 1b — Pasta de destino */}
         <section
