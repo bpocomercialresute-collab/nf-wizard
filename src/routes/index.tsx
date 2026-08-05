@@ -18,8 +18,11 @@ import {
   BookOpen,
   Type,
   MousePointerClick,
+  Database,
+  Save,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
+import { saveNF, listNFs, storageUrl, fmtDate, type NFRecord } from "../lib/nf-storage";
 
 // ---- Types ----
 
@@ -439,6 +442,10 @@ function Index() {
   const [outputDirName, setOutputDirName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [showAllNFs, setShowAllNFs] = useState(false);
+  const [allNFs, setAllNFs] = useState<NFRecord[]>([]);
+  const [loadingNFs, setLoadingNFs] = useState(false);
+  const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "duplicate" | "error">>({});
 
   const pattern = PATTERN_UI_ENABLED
     ? activeTokens.length > 0
@@ -636,6 +643,29 @@ function Index() {
     URL.revokeObjectURL(url);
   };
 
+  // ---- Salvar no banco ----
+
+  const handleSave = useCallback(async (nfFile: NFFile) => {
+    if (nfFile.status !== "concluido") return;
+    setSaveStates((prev) => ({ ...prev, [nfFile.id]: "saving" }));
+    const result = await saveNF(nfFile.file, nfFile.fields);
+    if (result.ok) {
+      setSaveStates((prev) => ({ ...prev, [nfFile.id]: "saved" }));
+    } else if (result.duplicate) {
+      setSaveStates((prev) => ({ ...prev, [nfFile.id]: "duplicate" }));
+    } else {
+      setSaveStates((prev) => ({ ...prev, [nfFile.id]: "error" }));
+    }
+  }, []);
+
+  const openAllNFs = useCallback(async () => {
+    setShowAllNFs(true);
+    setLoadingNFs(true);
+    const records = await listNFs();
+    setAllNFs(records);
+    setLoadingNFs(false);
+  }, []);
+
   // ---- Active file helpers ----
 
   const activeExt = activeFile?.ext ?? "";
@@ -689,8 +719,16 @@ function Index() {
           </span>
           <button
             type="button"
+            onClick={openAllNFs}
+            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 lg:ml-0"
+          >
+            <Database className="size-4" />
+            <span className="hidden sm:inline">Todas NFs</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setShowManual(true)}
-            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary lg:ml-3"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
           >
             <BookOpen className="size-4" />
             <span className="hidden sm:inline">Manual</span>
@@ -699,6 +737,98 @@ function Index() {
       </header>
 
       {showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
+
+      {/* Modal — Todas NFs */}
+      {showAllNFs && (
+        <div
+          onClick={() => setShowAllNFs(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="surface flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border/70 shadow-[var(--shadow-glow)]"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15">
+                  <Database className="size-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-bold tracking-tight">Todas as Notas Fiscais</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {loadingNFs ? "Carregando…" : `${allNFs.length} nota${allNFs.length !== 1 ? "s" : ""} salva${allNFs.length !== 1 ? "s" : ""}`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllNFs(false)}
+                className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {/* Lista */}
+            <div className="flex flex-col gap-2 overflow-y-auto p-4">
+              {loadingNFs && (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  <Loader2 className="size-6 animate-spin" />
+                </div>
+              )}
+              {!loadingNFs && allNFs.length === 0 && (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <Database className="size-10 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhuma nota fiscal salva ainda.</p>
+                </div>
+              )}
+              {!loadingNFs && allNFs.map((nf) => {
+                const isPdf = nf.storage_path?.endsWith(".pdf");
+                return (
+                  <div
+                    key={nf.id}
+                    className="flex items-center gap-4 rounded-xl border border-border bg-card/60 p-3 transition hover:border-primary/50"
+                  >
+                    {/* Thumbnail */}
+                    <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-muted">
+                      {nf.storage_path && !isPdf ? (
+                        <img
+                          src={storageUrl(nf.storage_path)}
+                          alt="NF"
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <FileText className="size-7 text-accent" />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="truncate text-sm font-bold text-foreground">
+                          NF {nf.nf_numero ?? "—"}
+                        </span>
+                        {nf.nf_valor && (
+                          <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
+                            {nf.nf_valor}
+                          </span>
+                        )}
+                      </div>
+                      {nf.nf_destinatario && (
+                        <p className="truncate text-xs text-muted-foreground">{nf.nf_destinatario}</p>
+                      )}
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                        {fmtDate(nf.created_at)} · {nf.file_name}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
         {/* Zona 1 — Como salvar (oculto quando PATTERN_UI_ENABLED = false) */}
@@ -1120,14 +1250,59 @@ function Index() {
                     </span>
                   </div>
                   {activeFile.status === "concluido" && (
-                    <button
-                      type="button"
-                      onClick={() => downloadOne(activeFile)}
-                      className="mt-3 inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
-                    >
-                      <Download className="size-3.5" />
-                      Baixar este arquivo
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => downloadOne(activeFile)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+                      >
+                        <Download className="size-3.5" />
+                        Baixar este arquivo
+                      </button>
+
+                      {/* Botão Salvar na ferramenta */}
+                      {(() => {
+                        const st = saveStates[activeFile.id];
+                        if (st === "saved") return (
+                          <span className="inline-flex items-center gap-2 rounded-xl border border-success/40 bg-success/10 px-3 py-2 text-xs font-medium text-success">
+                            <CheckCircle2 className="size-3.5" />
+                            Salvo na ferramenta
+                          </span>
+                        );
+                        if (st === "duplicate") return (
+                          <span className="inline-flex items-center gap-2 rounded-xl border border-muted bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                            <CheckCircle2 className="size-3.5" />
+                            Já salvo anteriormente
+                          </span>
+                        );
+                        if (st === "saving") return (
+                          <span className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+                            <Loader2 className="size-3.5 animate-spin" />
+                            Salvando…
+                          </span>
+                        );
+                        if (st === "error") return (
+                          <button
+                            type="button"
+                            onClick={() => handleSave(activeFile)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive transition hover:bg-destructive/20"
+                          >
+                            <AlertTriangle className="size-3.5" />
+                            Erro — tentar novamente
+                          </button>
+                        );
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleSave(activeFile)}
+                            className="brand-gradient inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all duration-200 hover:brightness-110"
+                          >
+                            <Save className="size-3.5" />
+                            Salvar na ferramenta
+                          </button>
+                        );
+                      })()}
+                    </div>
                   )}
                 </div>
               </div>
