@@ -22,9 +22,12 @@ import {
   Save,
   Eye,
   LogOut,
+  FileDown,
+  CalendarDays,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { saveNF, listNFs, storageUrl, fmtDate, type NFRecord } from "../lib/nf-storage";
+import { getWeekOptions } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
 // ---- Types ----
@@ -449,6 +452,9 @@ function Index() {
   const [allNFs, setAllNFs] = useState<NFRecord[]>([]);
   const [loadingNFs, setLoadingNFs] = useState(false);
   const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "duplicate" | "error">>({});
+  const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+  const [reportState, setReportState] = useState<"idle" | "generating">("idle");
+  const [reportProgress, setReportProgress] = useState(0);
 
   const pattern = PATTERN_UI_ENABLED
     ? activeTokens.length > 0
@@ -669,6 +675,25 @@ function Index() {
     setLoadingNFs(false);
   }, []);
 
+  const handleGenerateReport = useCallback(async () => {
+    const weeks = getWeekOptions();
+    const week = weeks[selectedWeekIdx];
+    if (!week) return;
+    setReportState("generating");
+    setReportProgress(0);
+    const { fetchWeekNFs, generateWeeklyPDF, downloadPDF } = await import("../lib/weekly-report");
+    const nfs = await fetchWeekNFs(week.start, week.end);
+    if (nfs.length === 0) {
+      setReportState("idle");
+      alert("Nenhuma nota fiscal encontrada nessa semana.");
+      return;
+    }
+    const bytes = await generateWeeklyPDF(nfs, week.label, (pct) => setReportProgress(pct));
+    const safeName = week.label.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_");
+    downloadPDF(bytes, `NF_Wizard_Relatorio_${safeName}.pdf`);
+    setReportState("idle");
+  }, [selectedWeekIdx]);
+
   // ---- Active file helpers ----
 
   const activeExt = activeFile?.ext ?? "";
@@ -779,6 +804,42 @@ function Index() {
               >
                 <X className="size-4" />
               </button>
+            </div>
+
+            {/* Painel Relatório Semanal */}
+            <div className="border-b border-border/60 bg-muted/30 px-5 py-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <CalendarDays className="size-4 shrink-0 text-primary" />
+                <span className="text-xs font-medium text-foreground">Relatório semanal em PDF</span>
+                <select
+                  value={selectedWeekIdx}
+                  onChange={(e) => setSelectedWeekIdx(Number(e.target.value))}
+                  disabled={reportState === "generating"}
+                  className="flex-1 rounded-lg border border-border bg-input/60 px-2 py-1.5 text-xs text-foreground outline-none transition focus:border-primary disabled:opacity-50"
+                >
+                  {getWeekOptions().map((w, i) => (
+                    <option key={i} value={i}>{w.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleGenerateReport}
+                  disabled={reportState === "generating"}
+                  className="brand-gradient inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all hover:brightness-110 disabled:opacity-50"
+                >
+                  {reportState === "generating" ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      {reportProgress}%
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="size-3.5" />
+                      Gerar PDF
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Lista */}
