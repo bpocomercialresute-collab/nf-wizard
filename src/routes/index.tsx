@@ -1336,16 +1336,6 @@ function Index() {
             <Download className="size-4" />
             Baixar selecionados
           </button>
-          <button
-            id="btn-download-zip"
-            type="button"
-            disabled={nfFiles.filter((f) => f.status === "concluido").length === 0}
-            onClick={downloadAllZip}
-            className="brand-gradient inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all duration-200 hover:brightness-110 hover:-translate-y-px active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
-          >
-            <FileArchive className="size-4" />
-            Baixar todos como ZIP
-          </button>
         </div>
       </footer>
     </div>
