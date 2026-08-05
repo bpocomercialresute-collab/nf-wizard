@@ -18,8 +18,6 @@ import {
   BookOpen,
   Type,
   MousePointerClick,
-  Cloud,
-  Lock,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 
@@ -316,9 +314,8 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
       title: "4. OCR automático",
       body: (
         <>
-          O texto é lido e os campos (número, data, destinatário, CNPJ, valor) preenchem sozinhos.
-          Escolha o motor no topo: <strong>Nuvem</strong> (mais preciso, envia a imagem ao serviço)
-          ou <strong>Local</strong> (privado, roda no navegador).
+          O texto é lido e os campos (número, data, destinatário, CNPJ, valor) preenchem sozinhos
+          automaticamente via OCR em nuvem de alta precisão.
         </>
       ),
     },
@@ -397,8 +394,8 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
           <div className="flex gap-2.5 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
             <Sparkles className="size-4 shrink-0 text-primary" />
             <p className="text-xs leading-relaxed text-foreground">
-              Na <strong>primeira vez</strong>, o modelo de OCR é baixado (precisa de internet uma
-              vez). Depois roda offline — suas notas <strong>nunca saem do navegador</strong>.
+              O OCR é processado em nuvem para <strong>máxima precisão</strong>. A imagem da nota é
+              enviada ao serviço e o texto retorna em segundos.
             </p>
           </div>
         </div>
@@ -426,36 +423,7 @@ function Index() {
   const [outputDirName, setOutputDirName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [showManual, setShowManual] = useState(false);
-  const [engine, setEngine] = useState<"cloud" | "local">("cloud");
-  const [apiKey, setApiKey] = useState("");
   const patternRef = useRef<HTMLInputElement>(null);
-
-  // Carrega preferências salvas uma vez (só no cliente).
-  useEffect(() => {
-    const e = localStorage.getItem("nfw_engine");
-    if (e === "local" || e === "cloud") setEngine(e);
-    const k = localStorage.getItem("nfw_apikey");
-    if (k !== null) setApiKey(k);
-  }, []);
-
-  // Grava NA AÇÃO do usuário (sem effect, evita apagar no mount). Fica
-  // salvo para sempre até o usuário mudar.
-  const chooseEngine = (e: "cloud" | "local") => {
-    setEngine(e);
-    try {
-      localStorage.setItem("nfw_engine", e);
-    } catch {
-      /* ignora storage indisponível */
-    }
-  };
-  const changeApiKey = (k: string) => {
-    setApiKey(k);
-    try {
-      localStorage.setItem("nfw_apikey", k);
-    } catch {
-      /* ignora storage indisponível */
-    }
-  };
 
   const activeFile = nfFiles.find((f) => f.id === activeId) ?? nfFiles[0] ?? null;
   const selectedCount = nfFiles.filter((f) => f.selected).length;
@@ -516,19 +484,18 @@ function Index() {
         let previewUrl: string;
         let confidence: number | undefined;
 
-        if (isImage && engine === "cloud") {
-          // Nuvem selecionada = nuvem. Sem cair para local escondido.
+        if (isImage) {
           try {
             const { ocrCloud } = await import("../lib/ocr-cloud");
-            const r = await ocrCloud(file, apiKey, onProg);
+            const { getOcrApiKey } = await import("../lib/supabase-config");
+            const key = await getOcrApiKey();
+            const r = await ocrCloud(file, key, onProg);
             ocrText = r.text;
             previewUrl = r.previewUrl;
-            confidence = 96; // OCR.space engine 2 — leitura de alta precisão
+            confidence = 96;
           } catch (cloudErr) {
             const msg = cloudErr instanceof Error ? cloudErr.message : String(cloudErr);
-            throw new Error(
-              `OCR em nuvem falhou: ${msg}. Verifique sua chave de API OCR.space (ou troque para Local).`,
-            );
+            throw new Error(`OCR em nuvem falhou: ${msg}.`);
           }
         } else {
           const r = isImage ? await ocrImage(file, onProg) : await ocrPDF(file, onProg);
@@ -553,7 +520,7 @@ function Index() {
         });
       }
     },
-    [engine, apiKey],
+    [],
   );
 
   const handleFiles = useCallback(
@@ -712,7 +679,7 @@ function Index() {
           </div>
           <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
             <Sparkles className="size-3.5" />
-            OCR local no navegador
+            OCR em nuvem — alta precisão
           </span>
           <button
             type="button"
@@ -753,77 +720,6 @@ function Index() {
               </button>
             ))}
           </div>
-        </section>
-
-        {/* Zona 1a — Motor de OCR */}
-        <section
-          className="surface animate-rise rounded-2xl border border-border/70 p-5"
-          style={{ animationDelay: "40ms" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">Motor de leitura (OCR)</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {engine === "cloud"
-                  ? "Nuvem: máxima precisão. A imagem é enviada ao serviço OCR.space."
-                  : "Local: roda no navegador, 100% privado. Menor precisão em fotos ruins."}
-              </p>
-            </div>
-            <div className="flex shrink-0 rounded-xl border border-border bg-secondary p-1">
-              <button
-                type="button"
-                onClick={() => chooseEngine("cloud")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                  engine === "cloud"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Cloud className="size-4" />
-                Nuvem
-              </button>
-              <button
-                type="button"
-                onClick={() => chooseEngine("local")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                  engine === "local"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Lock className="size-4" />
-                Local
-              </button>
-            </div>
-          </div>
-          {engine === "cloud" && (
-            <div className="mt-3 border-t border-border/60 pt-3">
-              <label htmlFor="ocr-key" className="text-xs font-medium text-muted-foreground">
-                Chave da API OCR.space
-              </label>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <input
-                  id="ocr-key"
-                  value={apiKey}
-                  onChange={(e) => changeApiKey(e.target.value)}
-                  placeholder="helloworld (demo — limitada)"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-input/60 px-3 py-2 font-mono text-xs outline-none transition focus:border-primary"
-                />
-                <a
-                  href="https://ocr.space/ocrapi/freekey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
-                >
-                  Pegar chave grátis
-                </a>
-              </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                Vazio usa a chave demo (poucas leituras/dia). Uma chave grátis própria libera uso
-                normal. Guardada só no seu navegador.
-              </p>
-            </div>
-          )}
         </section>
 
         {/* Zona 1b — Pasta de destino */}
