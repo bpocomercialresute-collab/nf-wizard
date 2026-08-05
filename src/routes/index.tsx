@@ -20,6 +20,7 @@ import {
   MousePointerClick,
   Database,
   Save,
+  Eye,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { saveNF, listNFs, storageUrl, fmtDate, type NFRecord } from "../lib/nf-storage";
@@ -822,6 +823,38 @@ function Index() {
                         {fmtDate(nf.created_at)} · {nf.file_name}
                       </p>
                     </div>
+
+                    {/* Ações */}
+                    {nf.storage_path && (
+                      <div className="flex shrink-0 gap-2">
+                        <a
+                          href={storageUrl(nf.storage_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Visualizar imagem"
+                          className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                        >
+                          <Eye className="size-4" />
+                        </a>
+                        <button
+                          type="button"
+                          title="Baixar imagem"
+                          onClick={async () => {
+                            const res = await fetch(storageUrl(nf.storage_path!));
+                            const blob = await res.blob();
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = nf.file_name;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                        >
+                          <Download className="size-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
