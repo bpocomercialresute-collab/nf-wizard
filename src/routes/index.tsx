@@ -596,10 +596,13 @@ function Index() {
           showDirectoryPicker: (o?: object) => Promise<FileSystemDirectoryHandle>;
         }
       ).showDirectoryPicker({ mode: "readwrite" });
+      // Limpa primeiro para garantir que o React detecta a mudança
+      setOutputDir(null);
+      setOutputDirName("");
       setOutputDir(handle);
       setOutputDirName(handle.name);
     } catch {
-      // user cancelled
+      // user cancelled — mantém estado atual
     }
   };
 
@@ -1028,7 +1031,7 @@ function Index() {
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
-              {outputDir && (
+              {outputDirName && (
                 <button
                   type="button"
                   onClick={clearOutputFolder}
@@ -1044,7 +1047,7 @@ function Index() {
                 className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
               >
                 <FolderOpen className="size-4" />
-                {outputDir ? "Alterar pasta" : "Selecionar pasta"}
+                {outputDirName ? "Alterar pasta" : "Selecionar pasta"}
               </button>
             </div>
           </div>
