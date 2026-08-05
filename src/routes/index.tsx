@@ -452,6 +452,7 @@ function Index() {
   const [allNFs, setAllNFs] = useState<NFRecord[]>([]);
   const [loadingNFs, setLoadingNFs] = useState(false);
   const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "duplicate" | "error">>({});
+  const [showReport, setShowReport] = useState(false);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [reportState, setReportState] = useState<"idle" | "generating">("idle");
   const [reportProgress, setReportProgress] = useState(0);
@@ -674,9 +675,9 @@ function Index() {
     setLoadingNFs(false);
   }, []);
 
-  // Busca contagem da semana selecionada sempre que o modal abre ou semana muda
+  // Busca contagem da semana selecionada sempre que o modal de relatório abre ou semana muda
   useEffect(() => {
-    if (!showAllNFs) return;
+    if (!showReport) return;
     setWeekNFCount(null);
     const weeks = getWeekOptions();
     const week = weeks[selectedWeekIdx];
@@ -686,7 +687,7 @@ function Index() {
       fetchWeekNFCount(week.start, week.end).then((n) => { if (!cancelled) setWeekNFCount(n); })
     );
     return () => { cancelled = true; };
-  }, [showAllNFs, selectedWeekIdx]);
+  }, [showReport, selectedWeekIdx]);
 
   const handleGenerateReport = useCallback(async () => {
     const weeks = getWeekOptions();
@@ -705,6 +706,7 @@ function Index() {
     const safeName = week.label.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_");
     downloadPDF(bytes, `NF_Wizard_Relatorio_${safeName}.pdf`);
     setReportState("idle");
+    setShowReport(false);
   }, [selectedWeekIdx]);
 
   // ---- Active file helpers ----
@@ -768,6 +770,14 @@ function Index() {
           </button>
           <button
             type="button"
+            onClick={() => setShowReport(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <FileDown className="size-4" />
+            <span className="hidden sm:inline">Relatório</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setShowManual(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
           >
@@ -817,76 +827,6 @@ function Index() {
               >
                 <X className="size-4" />
               </button>
-            </div>
-
-            {/* Painel Relatório Semanal */}
-            <div className="border-b border-border/60 bg-muted/30 px-5 py-4">
-              <div className="mb-2 flex items-center gap-2">
-                <CalendarDays className="size-4 shrink-0 text-primary" />
-                <span className="text-sm font-semibold text-foreground">Relatório semanal em PDF</span>
-                {weekNFCount !== null && (
-                  <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    weekNFCount > 0
-                      ? "bg-primary/12 text-primary"
-                      : "bg-muted text-muted-foreground"
-                  }`}>
-                    {weekNFCount} nota{weekNFCount !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {weekNFCount === null && (
-                  <Loader2 className="ml-auto size-3.5 animate-spin text-muted-foreground" />
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedWeekIdx}
-                  onChange={(e) => setSelectedWeekIdx(Number(e.target.value))}
-                  disabled={reportState === "generating"}
-                  className="flex-1 rounded-lg border border-border bg-input/60 px-2 py-1.5 text-xs text-foreground outline-none transition focus:border-primary disabled:opacity-50"
-                >
-                  {getWeekOptions().map((w, i) => (
-                    <option key={i} value={i}>{w.label}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleGenerateReport}
-                  disabled={reportState === "generating" || weekNFCount === 0}
-                  className="brand-gradient inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all hover:brightness-110 disabled:opacity-50"
-                >
-                  {reportState === "generating" ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      Gerando…
-                    </>
-                  ) : weekNFCount === 0 ? (
-                    <>
-                      <FileDown className="size-3.5" />
-                      Sem notas
-                    </>
-                  ) : (
-                    <>
-                      <FileDown className="size-3.5" />
-                      Gerar PDF
-                    </>
-                  )}
-                </button>
-              </div>
-              {/* Barra de progresso */}
-              {reportState === "generating" && (
-                <div className="mt-3">
-                  <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">
-                    <span>Gerando relatório…</span>
-                    <span>{reportProgress}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-border">
-                    <div
-                      className="progress-stripes h-full rounded-full transition-all duration-300"
-                      style={{ width: `${reportProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Lista */}
@@ -976,6 +916,138 @@ function Index() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Relatório Semanal */}
+      {showReport && (
+        <div
+          onClick={() => { if (reportState !== "generating") setShowReport(false); }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="surface flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border/70 shadow-[var(--shadow-glow)]"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15">
+                  <FileDown className="size-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-bold tracking-tight">Relatório Semanal em PDF</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Exporta todas as notas fiscais da semana
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { if (reportState !== "generating") setShowReport(false); }}
+                disabled={reportState === "generating"}
+                className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive disabled:opacity-40"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {/* Corpo */}
+            <div className="flex flex-col gap-5 p-5">
+              {/* Seletor de semana */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Semana
+                  </label>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-all ${
+                    weekNFCount === null
+                      ? "bg-muted text-muted-foreground"
+                      : weekNFCount > 0
+                        ? "bg-primary/12 text-primary"
+                        : "bg-muted text-muted-foreground"
+                  }`}>
+                    {weekNFCount === null ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Loader2 className="size-3 animate-spin" />
+                        contando…
+                      </span>
+                    ) : (
+                      `${weekNFCount} nota${weekNFCount !== 1 ? "s" : ""} nesta semana`
+                    )}
+                  </span>
+                </div>
+                <select
+                  value={selectedWeekIdx}
+                  onChange={(e) => setSelectedWeekIdx(Number(e.target.value))}
+                  disabled={reportState === "generating"}
+                  className="w-full rounded-xl border border-border bg-input/60 px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-50"
+                >
+                  {getWeekOptions().map((w, i) => (
+                    <option key={i} value={i}>{w.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Info */}
+              {weekNFCount !== null && weekNFCount > 0 && reportState === "idle" && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+                  <CalendarDays className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <p className="text-xs leading-relaxed text-foreground">
+                    O relatório incluirá <strong>{weekNFCount} nota{weekNFCount !== 1 ? "s" : ""} fiscal{weekNFCount !== 1 ? "is" : ""}</strong> com capa, tabela-resumo e uma página por NF com imagem.
+                  </p>
+                </div>
+              )}
+
+              {weekNFCount === 0 && reportState === "idle" && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3.5">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Nenhuma nota fiscal encontrada nessa semana. Selecione outra semana.
+                  </p>
+                </div>
+              )}
+
+              {/* Barra de progresso */}
+              {reportState === "generating" && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Gerando PDF…</span>
+                    <span className="font-semibold text-primary">{reportProgress}%</span>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-border">
+                    <div
+                      className="progress-stripes h-full rounded-full transition-all duration-300"
+                      style={{ width: `${reportProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Aguarde — embutindo imagens das notas…
+                  </p>
+                </div>
+              )}
+
+              {/* Botão */}
+              <button
+                type="button"
+                onClick={handleGenerateReport}
+                disabled={reportState === "generating" || weekNFCount === 0 || weekNFCount === null}
+                className="brand-gradient inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {reportState === "generating" ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Gerando relatório…
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="size-4" />
+                    Gerar e baixar PDF
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
