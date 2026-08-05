@@ -455,6 +455,7 @@ function Index() {
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [reportState, setReportState] = useState<"idle" | "generating">("idle");
   const [reportProgress, setReportProgress] = useState(0);
+  const [weekNFCount, setWeekNFCount] = useState<number | null>(null);
 
   const pattern = PATTERN_UI_ENABLED
     ? activeTokens.length > 0
@@ -673,6 +674,20 @@ function Index() {
     setLoadingNFs(false);
   }, []);
 
+  // Busca contagem da semana selecionada sempre que o modal abre ou semana muda
+  useEffect(() => {
+    if (!showAllNFs) return;
+    setWeekNFCount(null);
+    const weeks = getWeekOptions();
+    const week = weeks[selectedWeekIdx];
+    if (!week) return;
+    let cancelled = false;
+    import("../lib/weekly-report").then(({ fetchWeekNFCount }) =>
+      fetchWeekNFCount(week.start, week.end).then((n) => { if (!cancelled) setWeekNFCount(n); })
+    );
+    return () => { cancelled = true; };
+  }, [showAllNFs, selectedWeekIdx]);
+
   const handleGenerateReport = useCallback(async () => {
     const weeks = getWeekOptions();
     const week = weeks[selectedWeekIdx];
@@ -805,10 +820,24 @@ function Index() {
             </div>
 
             {/* Painel Relatório Semanal */}
-            <div className="border-b border-border/60 bg-muted/30 px-5 py-3">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="border-b border-border/60 bg-muted/30 px-5 py-4">
+              <div className="mb-2 flex items-center gap-2">
                 <CalendarDays className="size-4 shrink-0 text-primary" />
-                <span className="text-xs font-medium text-foreground">Relatório semanal em PDF</span>
+                <span className="text-sm font-semibold text-foreground">Relatório semanal em PDF</span>
+                {weekNFCount !== null && (
+                  <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                    weekNFCount > 0
+                      ? "bg-primary/12 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {weekNFCount} nota{weekNFCount !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {weekNFCount === null && (
+                  <Loader2 className="ml-auto size-3.5 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={selectedWeekIdx}
                   onChange={(e) => setSelectedWeekIdx(Number(e.target.value))}
@@ -822,13 +851,18 @@ function Index() {
                 <button
                   type="button"
                   onClick={handleGenerateReport}
-                  disabled={reportState === "generating"}
-                  className="brand-gradient inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all hover:brightness-110 disabled:opacity-50"
+                  disabled={reportState === "generating" || weekNFCount === 0}
+                  className="brand-gradient inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-glow)] transition-all hover:brightness-110 disabled:opacity-50"
                 >
                   {reportState === "generating" ? (
                     <>
                       <Loader2 className="size-3.5 animate-spin" />
-                      {reportProgress}%
+                      Gerando…
+                    </>
+                  ) : weekNFCount === 0 ? (
+                    <>
+                      <FileDown className="size-3.5" />
+                      Sem notas
                     </>
                   ) : (
                     <>
@@ -838,6 +872,21 @@ function Index() {
                   )}
                 </button>
               </div>
+              {/* Barra de progresso */}
+              {reportState === "generating" && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">
+                    <span>Gerando relatório…</span>
+                    <span>{reportProgress}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+                    <div
+                      className="progress-stripes h-full rounded-full transition-all duration-300"
+                      style={{ width: `${reportProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Lista */}
