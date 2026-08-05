@@ -127,3 +127,49 @@ export function fmtDate(iso: string): string {
     minute: "2-digit",
   }).format(new Date(iso));
 }
+
+// ── Relatórios Semanais ───────────────────────────────────────────────────────
+
+export type NFReport = {
+  id: string;
+  week_start: string;
+  week_end: string;
+  week_label: string;
+  storage_path: string;
+  nf_count: number;
+  total_valor: number | null;
+  created_at: string;
+};
+
+export async function listSavedReports(): Promise<NFReport[]> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/nf_reports?select=*&order=week_start.desc`,
+    { headers: { ...H, "Content-Type": "application/json" } },
+  );
+  if (!res.ok) return [];
+  return (await res.json()) as NFReport[];
+}
+
+export function reportStorageUrl(storagePath: string): string {
+  return `${SUPABASE_URL}/storage/v1/object/public/nf-reports/${storagePath}`;
+}
+
+export async function triggerWeeklyReport(
+  weekStart?: string,
+): Promise<{ ok: true; storage_path: string; nf_count: number; skipped?: boolean; message?: string } | { ok: false; error: string }> {
+  try {
+    const body = weekStart ? JSON.stringify({ week_start: weekStart }) : "{}";
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/generate-weekly-report`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body },
+    );
+    const data = await res.json() as { ok: boolean; storage_path?: string; nf_count?: number; error?: string; skipped?: boolean; message?: string };
+    if (!data.ok) return { ok: false, error: (data as { error: string }).error };
+    const out: { ok: true; storage_path: string; nf_count: number; skipped?: boolean; message?: string } = { ok: true, storage_path: data.storage_path ?? "", nf_count: data.nf_count ?? 0 };
+    if (data.skipped !== undefined) out.skipped = data.skipped;
+    if (data.message !== undefined) out.message = data.message;
+    return out;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

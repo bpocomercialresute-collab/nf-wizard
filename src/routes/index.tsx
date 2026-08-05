@@ -26,7 +26,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
-import { saveNF, listNFs, storageUrl, fmtDate, type NFRecord } from "../lib/nf-storage";
+import { saveNF, listNFs, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
 import { getWeekOptions } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
@@ -457,6 +457,8 @@ function Index() {
   const [reportState, setReportState] = useState<"idle" | "generating">("idle");
   const [reportProgress, setReportProgress] = useState(0);
   const [weekNFCount, setWeekNFCount] = useState<number | null>(null);
+  const [savedReports, setSavedReports] = useState<NFReport[]>([]);
+  const [loadingSavedReports, setLoadingSavedReports] = useState(false);
 
   const pattern = PATTERN_UI_ENABLED
     ? activeTokens.length > 0
@@ -675,7 +677,15 @@ function Index() {
     setLoadingNFs(false);
   }, []);
 
-  // Busca contagem da semana selecionada sempre que o modal de relatório abre ou semana muda
+  // Quando modal de relatório abre: carrega relatórios salvos + contagem da semana
+  useEffect(() => {
+    if (!showReport) return;
+    // Carrega lista de relatórios salvos
+    setLoadingSavedReports(true);
+    listSavedReports().then((r) => { setSavedReports(r); setLoadingSavedReports(false); });
+  }, [showReport]);
+
+  // Contagem de NFs da semana selecionada
   useEffect(() => {
     if (!showReport) return;
     setWeekNFCount(null);
@@ -695,18 +705,46 @@ function Index() {
     if (!week) return;
     setReportState("generating");
     setReportProgress(0);
-    const { fetchWeekNFs, generateWeeklyPDF, downloadPDF } = await import("../lib/weekly-report");
-    const nfs = await fetchWeekNFs(week.start, week.end);
-    if (nfs.length === 0) {
-      setReportState("idle");
-      alert("Nenhuma nota fiscal encontrada nessa semana.");
-      return;
+
+    // Simula progresso enquanto a Edge Function processa
+    const fakeProgress = setInterval(() => {
+      setReportProgress((p) => (p < 88 ? p + 3 : p));
+    }, 800);
+
+    try {
+      // Formata week_start como YYYY-MM-DD para a Edge Function
+      const weekStartStr = week.start.toISOString().split("T")[0]!;
+      const result = await triggerWeeklyReport(weekStartStr);
+
+      clearInterval(fakeProgress);
+      setReportProgress(100);
+
+      if (!result.ok) {
+        alert(`Erro ao gerar relatório: ${result.error}`);
+        setReportState("idle");
+        setReportProgress(0);
+        return;
+      }
+
+      // Baixa o PDF do Storage
+      if (result.storage_path) {
+        const url = reportStorageUrl(result.storage_path);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `NF_Wizard_Relatorio_${weekStartStr}.pdf`;
+        a.target = "_blank";
+        a.click();
+      }
+
+      // Recarrega lista de relatórios salvos
+      setSavedReports(await listSavedReports());
+    } catch (err) {
+      clearInterval(fakeProgress);
+      alert(`Erro inesperado: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const bytes = await generateWeeklyPDF(nfs, week.label, (pct) => setReportProgress(pct));
-    const safeName = week.label.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_");
-    downloadPDF(bytes, `NF_Wizard_Relatorio_${safeName}.pdf`);
+
     setReportState("idle");
-    setShowReport(false);
+    setReportProgress(0);
   }, [selectedWeekIdx]);
 
   // ---- Active file helpers ----
@@ -1044,10 +1082,58 @@ function Index() {
                 ) : (
                   <>
                     <FileDown className="size-4" />
-                    Gerar e baixar PDF
+                    Gerar, salvar e baixar PDF
                   </>
                 )}
               </button>
+
+              {/* Lista de relatórios salvos */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Relatórios gerados automaticamente
+                  </p>
+                  {loadingSavedReports && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                </div>
+
+                {!loadingSavedReports && savedReports.length === 0 && (
+                  <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-3.5 py-3">
+                    <CalendarDays className="size-4 shrink-0 text-muted-foreground/50" />
+                    <p className="text-xs text-muted-foreground">
+                      Nenhum relatório salvo ainda. O sistema gera automaticamente toda segunda-feira.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex max-h-52 flex-col gap-1.5 overflow-y-auto">
+                  {savedReports.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 transition hover:border-primary/40"
+                    >
+                      <FileDown className="size-4 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-foreground">{r.week_label}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {r.nf_count} nota{r.nf_count !== 1 ? "s" : ""}
+                          {r.total_valor ? ` · ${r.total_valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
+                          {" · "}{fmtDate(r.created_at)}
+                        </p>
+                      </div>
+                      <a
+                        href={reportStorageUrl(r.storage_path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                        title="Baixar PDF"
+                      >
+                        <Download className="size-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
