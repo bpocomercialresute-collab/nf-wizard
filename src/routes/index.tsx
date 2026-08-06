@@ -1317,7 +1317,6 @@ function Index() {
                         <p className="truncate text-xs font-semibold text-foreground">{r.week_label}</p>
                         <p className="text-[11px] text-muted-foreground">
                           {r.nf_count} nota{r.nf_count !== 1 ? "s" : ""}
-                          {r.total_valor ? ` · ${r.total_valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                           {" · "}{fmtDate(r.created_at)}
                         </p>
                       </div>

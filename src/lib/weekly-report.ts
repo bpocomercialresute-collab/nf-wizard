@@ -88,15 +88,6 @@ export async function fetchWeekNFCount(start: Date, end: Date): Promise<number> 
 
 // ── Helpers de desenho ────────────────────────────────────────────────────────
 
-function parseValor(s: string | undefined): number {
-  if (!s) return 0;
-  return parseFloat(s.replace(/R\$\s?/, "").replace(/\./g, "").replace(",", ".")) || 0;
-}
-
-function fmtBRL(n: number): string {
-  return `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
@@ -142,7 +133,6 @@ export async function generateWeeklyPDF(
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold    = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const totalValor = nfs.reduce((s, n) => s + parseValor(n.nf_valor), 0);
   const totalPages = 2 + nfs.length; // capa + resumo + 1 por NF
 
   // ── Tenta embutir logo ──────────────────────────────────────────────────────
@@ -180,13 +170,12 @@ export async function generateWeeklyPDF(
   cover.drawRectangle({ x: M, y: H - 220, width: CW, height: 36, color: C.brand, borderColor: C.brand, borderWidth: 0 });
   cover.drawText(periodClean, { x: M + 12, y: H - 196, size: 13, font: bold, color: C.white });
 
-  // 3 cards de resumo
-  const cardW = (CW - 16) / 3;
+  // 2 cards de resumo
+  const cardW = (CW - 8) / 2;
   const cardH = 72;
   const cardY = H - 320;
   const cards = [
     { label: "Total de Notas", value: String(nfs.length), sub: "notas fiscais" },
-    { label: "Valor Total", value: totalValor > 0 ? fmtBRL(totalValor) : "—", sub: "soma dos valores" },
     { label: "Período", value: periodClean.split(" – ")[0] ?? "", sub: `até ${periodClean.split(" – ")[1] ?? ""}` },
   ];
   for (let ci = 0; ci < cards.length; ci++) {
@@ -210,10 +199,8 @@ export async function generateWeeklyPDF(
     if (ni % 2 === 0) cover.drawRectangle({ x: M, y: iy - 2, width: CW, height: 14, color: C.rowAlt });
     cover.drawText(`${String(ni + 1).padStart(2, "0")}.`, { x: M + 4, y: iy + 2, size: 8, font: bold, color: C.brand });
     cover.drawText(`NF ${nf.nf_numero ?? "—"}`, { x: M + 24, y: iy + 2, size: 8, font: bold, color: C.dark });
-    const dest = truncate(nf.nf_destinatario ?? "—", 30);
+    const dest = truncate(nf.nf_destinatario ?? "—", 40);
     cover.drawText(dest, { x: M + 90, y: iy + 2, size: 8, font: regular, color: C.mid });
-    const val = nf.nf_valor ? truncate(nf.nf_valor, 16) : "";
-    cover.drawText(val, { x: W - M - 80, y: iy + 2, size: 8, font: regular, color: C.success });
     cover.drawText(`Pág. ${ni + 3}`, { x: W - M - 28, y: iy + 2, size: 7.5, font: regular, color: C.gray });
     iy -= 14;
     if (iy < 50) break;
@@ -237,7 +224,7 @@ export async function generateWeeklyPDF(
   let sp: PDFPage | null = null;
   let sy = 0;
   const ROW_H = 16;
-  const COL = { num: M, nf: M + 22, dest: M + 80, cnpj: M + 240, data: M + 360, valor: M + 440 };
+  const COL = { num: M, nf: M + 22, dest: M + 80, cnpj: M + 240, data: M + 400 };
   const HEADER_Y = H - 72;
 
   function newSummaryPage() {
@@ -250,7 +237,6 @@ export async function generateWeeklyPDF(
     p.drawText("Destinatário",{ x: COL.dest + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
     p.drawText("CNPJ",        { x: COL.cnpj + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
     p.drawText("Data NF",     { x: COL.data + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
-    p.drawText("Valor",       { x: COL.valor+ 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
     summaryPages.push(p);
     return { page: p, rowY: HEADER_Y - ROW_H };
   }
@@ -269,15 +255,7 @@ export async function generateWeeklyPDF(
     sp!.drawText(truncate(nf.nf_destinatario ?? "—", 22),   { x: COL.dest + 2, y: rowY2, size: 7.5, font: regular, color: C.dark });
     sp!.drawText(truncate(nf.nf_cnpj ?? "—", 20),           { x: COL.cnpj + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
     sp!.drawText(truncate(nf.nf_data ?? "—", 10),           { x: COL.data + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
-    sp!.drawText(truncate(nf.nf_valor ?? "—", 13),          { x: COL.valor+ 2, y: rowY2, size: 7.5, font: bold,    color: C.success });
     sy -= ROW_H;
-  }
-
-  // Linha de total
-  if (totalValor > 0) {
-    sp!.drawRectangle({ x: M, y: sy, width: CW, height: ROW_H, color: C.brand });
-    sp!.drawText("TOTAL", { x: COL.dest + 2, y: sy + 4, size: 8, font: bold, color: C.white });
-    sp!.drawText(fmtBRL(totalValor), { x: COL.valor + 2, y: sy + 4, size: 8, font: bold, color: C.white });
   }
 
   for (const p of summaryPages) drawFooter(p, regular, summaryPages.indexOf(p) + 2, totalPages);
@@ -318,8 +296,8 @@ export async function generateWeeklyPDF(
       ["Data da NF", nf.nf_data],
     ];
     const row3: [string, string | undefined][] = [
-      ["Valor Total", nf.nf_valor],
       ["Data de upload", fmtDate(nf.created_at)],
+      ["Arquivo", nf.file_name],
     ];
 
     const rows = [row1, row2, row3];
