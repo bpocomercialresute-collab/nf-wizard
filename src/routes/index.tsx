@@ -30,7 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
-import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, saveReportToStorage, type NFRecord, type NFReport } from "../lib/nf-storage";
+import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, saveReportToStorage, deleteReport, type NFRecord, type NFReport } from "../lib/nf-storage";
 import { getWeekOptions, fetchWeekNFs, generateWeeklyPDF, downloadPDF } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
@@ -1362,6 +1362,22 @@ function Index() {
                       >
                         <Download className="size-3.5" />
                       </a>
+                      <button
+                        type="button"
+                        title="Excluir relatório"
+                        onClick={async () => {
+                          if (!confirm(`Excluir relatório "${r.week_label}"?`)) return;
+                          const ok = await deleteReport(r.id, r.storage_path);
+                          if (ok) {
+                            setSavedReports((prev) => prev.filter((x) => x.id !== r.id));
+                          } else {
+                            alert("Erro ao excluir relatório.");
+                          }
+                        }}
+                        className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>

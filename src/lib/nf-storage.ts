@@ -204,6 +204,22 @@ export function reportStorageUrl(storagePath: string): string {
   return `${SUPABASE_URL}/storage/v1/object/public/nf-reports/${storagePath}?t=${Date.now()}`;
 }
 
+export async function deleteReport(id: string, storagePath: string): Promise<boolean> {
+  try {
+    await fetch(`${SUPABASE_URL}/storage/v1/object/nf-reports/${storagePath}`, {
+      method: "DELETE",
+      headers: H,
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/nf_reports?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { ...H, Prefer: "return=minimal" },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteOldReports(weekStart: string): Promise<void> {
   try {
     const res = await fetch(
