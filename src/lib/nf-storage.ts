@@ -105,6 +105,25 @@ export async function saveNF(
   }
 }
 
+export async function updateNF(
+  id: string,
+  fields: Partial<Pick<NFRecord, "nf_numero" | "nf_data" | "nf_destinatario" | "nf_cnpj" | "nf_valor" | "file_name">>,
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/nf_uploads?id=eq.${id}`,
+      {
+        method: "PATCH",
+        headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify(fields),
+      },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function listNFs(): Promise<NFRecord[]> {
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/nf_uploads?select=*&order=created_at.desc`,

@@ -24,9 +24,12 @@ import {
   LogOut,
   FileDown,
   CalendarDays,
+  Search,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
-import { saveNF, listNFs, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
+import { saveNF, listNFs, updateNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
 import { getWeekOptions } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
@@ -459,6 +462,10 @@ function Index() {
   const [weekNFCount, setWeekNFCount] = useState<number | null>(null);
   const [savedReports, setSavedReports] = useState<NFReport[]>([]);
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
+  const [nfSearch, setNfSearch] = useState("");
+  const [editingNFId, setEditingNFId] = useState<string | null>(null);
+  const [editFields, setEditFields] = useState<Partial<NFRecord>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const pattern = PATTERN_UI_ENABLED
     ? activeTokens.length > 0
@@ -671,11 +678,50 @@ function Index() {
 
   const openAllNFs = useCallback(async () => {
     setShowAllNFs(true);
+    setNfSearch("");
+    setEditingNFId(null);
     setLoadingNFs(true);
     const records = await listNFs();
     setAllNFs(records);
     setLoadingNFs(false);
   }, []);
+
+  const filteredNFs = nfSearch.trim()
+    ? allNFs.filter((nf) => {
+        const q = nfSearch.toLowerCase();
+        return (
+          (nf.nf_numero ?? "").toLowerCase().includes(q) ||
+          (nf.nf_destinatario ?? "").toLowerCase().includes(q) ||
+          (nf.nf_cnpj ?? "").toLowerCase().includes(q) ||
+          (nf.nf_valor ?? "").toLowerCase().includes(q) ||
+          (nf.file_name ?? "").toLowerCase().includes(q)
+        );
+      })
+    : allNFs;
+
+  const startEditNF = useCallback((nf: NFRecord) => {
+    setEditingNFId(nf.id);
+    setEditFields({
+      nf_numero: nf.nf_numero ?? "",
+      nf_destinatario: nf.nf_destinatario ?? "",
+      nf_cnpj: nf.nf_cnpj ?? "",
+      nf_valor: nf.nf_valor ?? "",
+      file_name: nf.file_name ?? "",
+    });
+  }, []);
+
+  const saveEditNF = useCallback(async () => {
+    if (!editingNFId) return;
+    setSavingEdit(true);
+    const ok = await updateNF(editingNFId, editFields);
+    if (ok) {
+      setAllNFs((prev) =>
+        prev.map((nf) => (nf.id === editingNFId ? { ...nf, ...editFields } : nf)),
+      );
+      setEditingNFId(null);
+    }
+    setSavingEdit(false);
+  }, [editingNFId, editFields]);
 
   // Quando modal de relatório abre: carrega relatórios salvos + contagem da semana
   useEffect(() => {
@@ -838,7 +884,7 @@ function Index() {
       {/* Modal — Todas NFs */}
       {showAllNFs && (
         <div
-          onClick={() => setShowAllNFs(false)}
+          onClick={() => { setShowAllNFs(false); setEditingNFId(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
         >
           <div
@@ -860,12 +906,42 @@ function Index() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowAllNFs(false)}
+                onClick={() => { setShowAllNFs(false); setEditingNFId(null); }}
                 className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
               >
                 <X className="size-4" />
               </button>
             </div>
+
+            {/* Barra de pesquisa */}
+            {!loadingNFs && allNFs.length > 0 && (
+              <div className="border-b border-border/60 px-5 py-3">
+                <div className="flex items-center gap-2.5 rounded-xl border border-border bg-input/60 px-3 py-2 transition focus-within:border-primary">
+                  <Search className="size-4 shrink-0 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={nfSearch}
+                    onChange={(e) => setNfSearch(e.target.value)}
+                    placeholder="Pesquisar por número, destinatário, CNPJ, valor…"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                  {nfSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setNfSearch("")}
+                      className="text-muted-foreground transition hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                {nfSearch.trim() && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    {filteredNFs.length} resultado{filteredNFs.length !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Lista */}
             <div className="flex flex-col gap-2 overflow-y-auto p-4">
@@ -880,75 +956,155 @@ function Index() {
                   <p className="text-sm text-muted-foreground">Nenhuma nota fiscal salva ainda.</p>
                 </div>
               )}
-              {!loadingNFs && allNFs.map((nf) => {
+              {!loadingNFs && filteredNFs.length === 0 && allNFs.length > 0 && (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <Search className="size-10 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhum resultado para "{nfSearch}"</p>
+                </div>
+              )}
+              {!loadingNFs && filteredNFs.map((nf) => {
                 const isPdf = nf.storage_path?.endsWith(".pdf");
+                const isEditing = editingNFId === nf.id;
                 return (
                   <div
                     key={nf.id}
-                    className="flex items-center gap-4 rounded-xl border border-border bg-card/60 p-3 transition hover:border-primary/50"
+                    className={`rounded-xl border p-3 transition ${isEditing ? "border-primary bg-primary/5" : "border-border bg-card/60 hover:border-primary/50"}`}
                   >
-                    {/* Thumbnail */}
-                    <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-muted">
-                      {nf.storage_path && !isPdf ? (
-                        <img
-                          src={storageUrl(nf.storage_path)}
-                          alt="NF"
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <FileText className="size-7 text-accent" />
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="truncate text-sm font-bold text-foreground">
-                          NF {nf.nf_numero ?? "—"}
-                        </span>
-                        {nf.nf_valor && (
-                          <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
-                            {nf.nf_valor}
-                          </span>
+                    <div className="flex items-center gap-4">
+                      {/* Thumbnail */}
+                      <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-muted">
+                        {nf.storage_path && !isPdf ? (
+                          <img
+                            src={storageUrl(nf.storage_path)}
+                            alt="NF"
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <FileText className="size-7 text-accent" />
                         )}
                       </div>
-                      {nf.nf_destinatario && (
-                        <p className="truncate text-xs text-muted-foreground">{nf.nf_destinatario}</p>
-                      )}
-                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                        {fmtDate(nf.created_at)} · {nf.file_name}
-                      </p>
-                    </div>
 
-                    {/* Ações */}
-                    {nf.storage_path && (
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="truncate text-sm font-bold text-foreground">
+                            NF {nf.nf_numero ?? "—"}
+                          </span>
+                          {nf.nf_valor && (
+                            <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
+                              {nf.nf_valor}
+                            </span>
+                          )}
+                        </div>
+                        {nf.nf_destinatario && (
+                          <p className="truncate text-xs text-muted-foreground">{nf.nf_destinatario}</p>
+                        )}
+                        <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                          {fmtDate(nf.created_at)} · {nf.file_name}
+                        </p>
+                      </div>
+
+                      {/* Ações */}
                       <div className="flex shrink-0 gap-2">
-                        <a
-                          href={storageUrl(nf.storage_path)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Visualizar imagem"
-                          className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
-                        >
-                          <Eye className="size-4" />
-                        </a>
                         <button
                           type="button"
-                          title="Baixar imagem"
-                          onClick={async () => {
-                            const res = await fetch(storageUrl(nf.storage_path!));
-                            const blob = await res.blob();
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = nf.file_name;
-                            a.click();
-                            URL.revokeObjectURL(url);
+                          title={isEditing ? "Cancelar edição" : "Editar campos"}
+                          onClick={() => {
+                            if (isEditing) {
+                              setEditingNFId(null);
+                            } else {
+                              startEditNF(nf);
+                            }
                           }}
-                          className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                          className={`grid size-9 place-items-center rounded-xl border transition ${
+                            isEditing
+                              ? "border-primary bg-primary/15 text-primary"
+                              : "border-border bg-secondary text-muted-foreground hover:border-primary hover:text-primary"
+                          }`}
                         >
-                          <Download className="size-4" />
+                          <Pencil className="size-4" />
                         </button>
+                        {nf.storage_path && (
+                          <>
+                            <a
+                              href={storageUrl(nf.storage_path)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Visualizar imagem"
+                              className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                            >
+                              <Eye className="size-4" />
+                            </a>
+                            <button
+                              type="button"
+                              title="Baixar imagem"
+                              onClick={async () => {
+                                const res = await fetch(storageUrl(nf.storage_path!));
+                                const blob = await res.blob();
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = nf.file_name;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-primary hover:text-primary"
+                            >
+                              <Download className="size-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Formulário de edição inline */}
+                    {isEditing && (
+                      <div className="mt-3 border-t border-border/60 pt-3">
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                          {[
+                            { key: "nf_numero" as const, label: "Número NF" },
+                            { key: "nf_destinatario" as const, label: "Destinatário" },
+                            { key: "nf_cnpj" as const, label: "CNPJ" },
+                            { key: "nf_valor" as const, label: "Valor" },
+                            { key: "file_name" as const, label: "Nome do arquivo" },
+                          ].map((field) => (
+                            <div key={field.key} className="rounded-lg border border-border bg-card/80 p-2 transition focus-within:border-primary">
+                              <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {field.label}
+                              </label>
+                              <input
+                                value={(editFields[field.key] as string) ?? ""}
+                                onChange={(e) =>
+                                  setEditFields((prev) => ({ ...prev, [field.key]: e.target.value }))
+                                }
+                                placeholder="não identificado"
+                                className="mt-0.5 w-full bg-transparent text-xs font-medium text-foreground outline-none placeholder:font-normal placeholder:italic placeholder:text-muted-foreground"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2.5 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingNFId(null)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-foreground hover:text-foreground"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={saveEditNF}
+                            disabled={savingEdit}
+                            className="brand-gradient inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50"
+                          >
+                            {savingEdit ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <Check className="size-3" />
+                            )}
+                            Salvar
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
