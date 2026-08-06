@@ -213,8 +213,17 @@ export async function triggerWeeklyReport(
       `${SUPABASE_URL}/functions/v1/generate-weekly-report`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body },
     );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      try {
+        const parsed = JSON.parse(text) as { error?: string };
+        return { ok: false, error: parsed.error ?? `Erro HTTP ${res.status}` };
+      } catch {
+        return { ok: false, error: `Erro HTTP ${res.status}: função pode ter excedido o tempo limite. Tente novamente.` };
+      }
+    }
     const data = await res.json() as { ok: boolean; storage_path?: string; nf_count?: number; error?: string; skipped?: boolean; message?: string };
-    if (!data.ok) return { ok: false, error: (data as { error: string }).error };
+    if (!data.ok) return { ok: false, error: data.error ?? "Erro desconhecido" };
     const out: { ok: true; storage_path: string; nf_count: number; skipped?: boolean; message?: string } = { ok: true, storage_path: data.storage_path ?? "", nf_count: data.nf_count ?? 0 };
     if (data.skipped !== undefined) out.skipped = data.skipped;
     if (data.message !== undefined) out.message = data.message;
