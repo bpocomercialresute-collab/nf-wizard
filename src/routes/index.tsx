@@ -715,15 +715,25 @@ function Index() {
   const saveEditNF = useCallback(async () => {
     if (!editingNFId) return;
     setSavingEdit(true);
-    const ok = await updateNF(editingNFId, editFields);
+    const currentNF = allNFs.find((n) => n.id === editingNFId);
+    const ext = (currentNF?.file_name ?? "pdf").split(".").pop()?.toLowerCase() ?? "pdf";
+    const editNFFields: NFFields = {};
+    if (editFields.nf_numero) editNFFields.numero = editFields.nf_numero;
+    if (currentNF?.nf_data) editNFFields.data = currentNF.nf_data;
+    if (editFields.nf_destinatario) editNFFields.destinatario = editFields.nf_destinatario;
+    if (editFields.nf_cnpj) editNFFields.cnpj = editFields.nf_cnpj;
+    if (editFields.nf_valor) editNFFields.valor = editFields.nf_valor;
+    const rebuiltName = buildName(pattern, editNFFields, ext);
+    const finalFields = { ...editFields, file_name: rebuiltName };
+    const ok = await updateNF(editingNFId, finalFields);
     if (ok) {
       setAllNFs((prev) =>
-        prev.map((nf) => (nf.id === editingNFId ? { ...nf, ...editFields } : nf)),
+        prev.map((nf) => (nf.id === editingNFId ? { ...nf, ...finalFields } : nf)),
       );
       setEditingNFId(null);
     }
     setSavingEdit(false);
-  }, [editingNFId, editFields]);
+  }, [editingNFId, editFields, allNFs, pattern]);
 
   const handleDeleteNF = useCallback(async (nf: NFRecord) => {
     const ok = await deleteNF(nf.id, nf.storage_path);
@@ -1088,7 +1098,6 @@ function Index() {
                             { key: "nf_destinatario" as const, label: "Destinatário" },
                             { key: "nf_cnpj" as const, label: "CNPJ" },
                             { key: "nf_valor" as const, label: "Valor" },
-                            { key: "file_name" as const, label: "Nome do arquivo" },
                           ].map((field) => (
                             <div key={field.key} className="rounded-lg border border-border bg-card/80 p-2 transition focus-within:border-primary">
                               <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -1104,6 +1113,20 @@ function Index() {
                               />
                             </div>
                           ))}
+                        </div>
+                        <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                          <p className="min-w-0 truncate font-mono text-[11px] text-foreground">
+                            {(() => {
+                              const f: NFFields = {};
+                              if (editFields.nf_numero) f.numero = editFields.nf_numero;
+                              if (nf.nf_data) f.data = nf.nf_data;
+                              if (editFields.nf_destinatario) f.destinatario = editFields.nf_destinatario;
+                              if (editFields.nf_cnpj) f.cnpj = editFields.nf_cnpj;
+                              if (editFields.nf_valor) f.valor = editFields.nf_valor;
+                              return buildName(pattern, f, (nf.file_name ?? "pdf").split(".").pop()?.toLowerCase() ?? "pdf");
+                            })()}
+                          </p>
                         </div>
                         <div className="mt-2.5 flex justify-end gap-2">
                           <button
