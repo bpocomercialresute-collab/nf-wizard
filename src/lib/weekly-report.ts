@@ -199,8 +199,9 @@ export async function generateWeeklyPDF(
     if (ni % 2 === 0) cover.drawRectangle({ x: M, y: iy - 2, width: CW, height: 14, color: C.rowAlt });
     cover.drawText(`${String(ni + 1).padStart(2, "0")}.`, { x: M + 4, y: iy + 2, size: 8, font: bold, color: C.brand });
     cover.drawText(`NF ${nf.nf_numero ?? "—"}`, { x: M + 24, y: iy + 2, size: 8, font: bold, color: C.dark });
-    const dest = truncate(nf.nf_destinatario ?? "—", 40);
+    const dest = truncate(nf.nf_destinatario ?? "—", 28);
     cover.drawText(dest, { x: M + 90, y: iy + 2, size: 8, font: regular, color: C.mid });
+    cover.drawText(truncate(nf.file_name ?? "", 24), { x: M + 280, y: iy + 2, size: 7, font: regular, color: C.gray });
     cover.drawText(`Pág. ${ni + 3}`, { x: W - M - 28, y: iy + 2, size: 7.5, font: regular, color: C.gray });
     iy -= 14;
     if (iy < 50) break;
@@ -224,7 +225,7 @@ export async function generateWeeklyPDF(
   let sp: PDFPage | null = null;
   let sy = 0;
   const ROW_H = 16;
-  const COL = { num: M, nf: M + 22, dest: M + 80, cnpj: M + 240, data: M + 400 };
+  const COL = { num: M, nf: M + 22, dest: M + 80, cnpj: M + 220, data: M + 350, fname: M + 420 };
   const HEADER_Y = H - 72;
 
   function newSummaryPage() {
@@ -232,11 +233,12 @@ export async function generateWeeklyPDF(
     drawPageHeader(p, bold, regular, "Resumo Geral");
     // Cabeçalho da tabela
     p.drawRectangle({ x: M, y: HEADER_Y, width: CW, height: 18, color: C.brand });
-    p.drawText("#",           { x: COL.num  + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
+    p.drawText("#",           { x: COL.num   + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
     p.drawText("Nº NF",       { x: COL.nf   + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
-    p.drawText("Destinatário",{ x: COL.dest + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
-    p.drawText("CNPJ",        { x: COL.cnpj + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
-    p.drawText("Data NF",     { x: COL.data + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
+    p.drawText("Destinatário",{ x: COL.dest  + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
+    p.drawText("CNPJ",        { x: COL.cnpj  + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
+    p.drawText("Data NF",     { x: COL.data  + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
+    p.drawText("Arquivo",     { x: COL.fname + 2, y: HEADER_Y + 5, size: 7.5, font: bold, color: C.white });
     summaryPages.push(p);
     return { page: p, rowY: HEADER_Y - ROW_H };
   }
@@ -250,11 +252,12 @@ export async function generateWeeklyPDF(
     }
     if (ni % 2 === 0) sp!.drawRectangle({ x: M, y: sy, width: CW, height: ROW_H, color: C.rowAlt });
     const rowY2 = sy + 4;
-    sp!.drawText(String(ni + 1),                            { x: COL.num  + 2, y: rowY2, size: 7.5, font: regular, color: C.gray });
-    sp!.drawText(truncate(nf.nf_numero ?? "—", 7),          { x: COL.nf   + 2, y: rowY2, size: 7.5, font: bold,    color: C.dark });
-    sp!.drawText(truncate(nf.nf_destinatario ?? "—", 22),   { x: COL.dest + 2, y: rowY2, size: 7.5, font: regular, color: C.dark });
-    sp!.drawText(truncate(nf.nf_cnpj ?? "—", 20),           { x: COL.cnpj + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
-    sp!.drawText(truncate(nf.nf_data ?? "—", 10),           { x: COL.data + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
+    sp!.drawText(String(ni + 1),                            { x: COL.num   + 2, y: rowY2, size: 7.5, font: regular, color: C.gray });
+    sp!.drawText(truncate(nf.nf_numero ?? "—", 7),          { x: COL.nf    + 2, y: rowY2, size: 7.5, font: bold,    color: C.dark });
+    sp!.drawText(truncate(nf.nf_destinatario ?? "—", 18),   { x: COL.dest  + 2, y: rowY2, size: 7.5, font: regular, color: C.dark });
+    sp!.drawText(truncate(nf.nf_cnpj ?? "—", 18),           { x: COL.cnpj  + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
+    sp!.drawText(truncate(nf.nf_data ?? "—", 10),           { x: COL.data  + 2, y: rowY2, size: 7.5, font: regular, color: C.mid  });
+    sp!.drawText(truncate(nf.file_name ?? "", 16),           { x: COL.fname + 2, y: rowY2, size: 7,   font: regular, color: C.gray });
     sy -= ROW_H;
   }
 
