@@ -27,9 +27,10 @@ import {
   Search,
   Pencil,
   Check,
+  Trash2,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
-import { saveNF, listNFs, updateNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
+import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
 import { getWeekOptions } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
@@ -723,6 +724,14 @@ function Index() {
     setSavingEdit(false);
   }, [editingNFId, editFields]);
 
+  const handleDeleteNF = useCallback(async (nf: NFRecord) => {
+    const ok = await deleteNF(nf.id, nf.storage_path);
+    if (ok) {
+      setAllNFs((prev) => prev.filter((n) => n.id !== nf.id));
+      if (editingNFId === nf.id) setEditingNFId(null);
+    }
+  }, [editingNFId]);
+
   // Quando modal de relatório abre: carrega relatórios salvos + contagem da semana
   useEffect(() => {
     if (!showReport) return;
@@ -1054,6 +1063,18 @@ function Index() {
                             </button>
                           </>
                         )}
+                        <button
+                          type="button"
+                          title="Excluir nota fiscal"
+                          onClick={() => {
+                            if (window.confirm(`Excluir NF ${nf.nf_numero ?? nf.file_name}? Esta ação não pode ser desfeita.`)) {
+                              handleDeleteNF(nf);
+                            }
+                          }}
+                          className="grid size-9 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                       </div>
                     </div>
 

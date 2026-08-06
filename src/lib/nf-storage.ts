@@ -46,6 +46,16 @@ export async function isDuplicate(hash: string): Promise<boolean> {
   return data.length > 0;
 }
 
+export async function isDuplicateNumero(numero: string): Promise<boolean> {
+  if (!numero) return false;
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/nf_uploads?nf_numero=eq.${encodeURIComponent(numero)}&select=id&limit=1`,
+    { headers: { ...H, "Content-Type": "application/json" } },
+  );
+  const data = (await res.json()) as { id: string }[];
+  return data.length > 0;
+}
+
 export async function saveNF(
   file: File,
   fields: {
@@ -60,6 +70,8 @@ export async function saveNF(
     const hash = await sha256(file);
 
     if (await isDuplicate(hash)) return { ok: false, duplicate: true };
+    if (fields.numero && await isDuplicateNumero(fields.numero))
+      return { ok: false, duplicate: true };
 
     // Upload imagem para o Storage
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
@@ -117,6 +129,24 @@ export async function updateNF(
         headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify(fields),
       },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteNF(id: string, storagePath?: string): Promise<boolean> {
+  try {
+    if (storagePath) {
+      await fetch(`${SUPABASE_URL}/storage/v1/object/nf-images/${storagePath}`, {
+        method: "DELETE",
+        headers: H,
+      });
+    }
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/nf_uploads?id=eq.${id}`,
+      { method: "DELETE", headers: { ...H, Prefer: "return=minimal" } },
     );
     return res.ok;
   } catch {
