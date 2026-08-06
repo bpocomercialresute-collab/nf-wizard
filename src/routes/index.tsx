@@ -458,8 +458,9 @@ function Index() {
   const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "duplicate" | "error">>({});
   const [showReport, setShowReport] = useState(false);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
-  const [reportState, setReportState] = useState<"idle" | "generating">("idle");
+  const [reportState, setReportState] = useState<"idle" | "generating" | "done">("idle");
   const [reportProgress, setReportProgress] = useState(0);
+  const [lastReportUrl, setLastReportUrl] = useState<string | null>(null);
   const [weekNFCount, setWeekNFCount] = useState<number | null>(null);
   const [savedReports, setSavedReports] = useState<NFReport[]>([]);
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
@@ -771,14 +772,13 @@ function Index() {
     if (!week) return;
     setReportState("generating");
     setReportProgress(0);
+    setLastReportUrl(null);
 
-    // Simula progresso enquanto a Edge Function processa
     const fakeProgress = setInterval(() => {
       setReportProgress((p) => (p < 88 ? p + 3 : p));
     }, 800);
 
     try {
-      // Formata week_start como YYYY-MM-DD para a Edge Function
       const weekStartStr = week.start.toISOString().split("T")[0]!;
       const result = await triggerWeeklyReport(weekStartStr);
 
@@ -787,30 +787,27 @@ function Index() {
 
       if (!result.ok) {
         alert(`Erro ao gerar relatório: ${result.error}`);
+        setSavedReports(await listSavedReports());
         setReportState("idle");
         setReportProgress(0);
         return;
       }
 
-      // Baixa o PDF do Storage
       if (result.storage_path) {
         const url = reportStorageUrl(result.storage_path);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `NF_Wizard_Relatorio_${weekStartStr}.pdf`;
-        a.target = "_blank";
-        a.click();
+        setLastReportUrl(url);
+        window.open(url, "_blank");
       }
 
-      // Recarrega lista de relatórios salvos
       setSavedReports(await listSavedReports());
+      setReportState("done");
     } catch (err) {
       clearInterval(fakeProgress);
       alert(`Erro inesperado: ${err instanceof Error ? err.message : String(err)}`);
+      setSavedReports(await listSavedReports());
+      setReportState("idle");
+      setReportProgress(0);
     }
-
-    setReportState("idle");
-    setReportProgress(0);
   }, [selectedWeekIdx]);
 
   // ---- Active file helpers ----
@@ -1263,12 +1260,38 @@ function Index() {
                     />
                   </div>
                   <p className="text-center text-[11px] text-muted-foreground">
-                    Aguarde — embutindo imagens das notas…
+                    Aguarde — processando notas fiscais…
                   </p>
                 </div>
               )}
 
+              {reportState === "done" && lastReportUrl && (
+                <div className="flex flex-col gap-2 rounded-xl border border-primary/40 bg-primary/5 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="size-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">Relatório gerado com sucesso!</p>
+                  </div>
+                  <a
+                    href={lastReportUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="brand-gradient inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-110"
+                  >
+                    <Download className="size-4" />
+                    Baixar PDF
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => { setReportState("idle"); setReportProgress(0); setLastReportUrl(null); }}
+                    className="text-xs text-muted-foreground hover:text-foreground transition"
+                  >
+                    Gerar outro relatório
+                  </button>
+                </div>
+              )}
+
               {/* Botão */}
+              {reportState !== "done" && (
               <button
                 type="button"
                 onClick={handleGenerateReport}
@@ -1287,6 +1310,7 @@ function Index() {
                   </>
                 )}
               </button>
+              )}
 
               {/* Lista de relatórios salvos */}
               <div className="flex flex-col gap-2">
