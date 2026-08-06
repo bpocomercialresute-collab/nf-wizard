@@ -65,6 +65,7 @@ export async function saveNF(
     cnpj?: string;
     valor?: string;
   },
+  displayName?: string,
 ): Promise<SaveResult> {
   try {
     const hash = await sha256(file);
@@ -90,7 +91,7 @@ export async function saveNF(
       headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({
         file_hash: hash,
-        file_name: file.name,
+        file_name: displayName ?? file.name,
         nf_numero: fields.numero ?? null,
         nf_data: fields.data ?? null,
         nf_destinatario: fields.destinatario ?? null,

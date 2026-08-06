@@ -667,7 +667,8 @@ function Index() {
   const handleSave = useCallback(async (nfFile: NFFile) => {
     if (nfFile.status !== "concluido") return;
     setSaveStates((prev) => ({ ...prev, [nfFile.id]: "saving" }));
-    const result = await saveNF(nfFile.file, nfFile.fields);
+    const name = getDisplayName(nfFile);
+    const result = await saveNF(nfFile.file, nfFile.fields, name);
     if (result.ok) {
       setSaveStates((prev) => ({ ...prev, [nfFile.id]: "saved" }));
     } else if (result.duplicate) {
@@ -675,7 +676,7 @@ function Index() {
     } else {
       setSaveStates((prev) => ({ ...prev, [nfFile.id]: "error" }));
     }
-  }, []);
+  }, [getDisplayName]);
 
   const openAllNFs = useCallback(async () => {
     setShowAllNFs(true);
