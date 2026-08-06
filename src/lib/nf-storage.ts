@@ -201,7 +201,7 @@ export async function listSavedReports(): Promise<NFReport[]> {
 }
 
 export function reportStorageUrl(storagePath: string): string {
-  return `${SUPABASE_URL}/storage/v1/object/public/nf-reports/${storagePath}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/nf-reports/${storagePath}?t=${Date.now()}`;
 }
 
 export async function triggerWeeklyReport(
