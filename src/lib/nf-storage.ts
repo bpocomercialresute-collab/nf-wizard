@@ -204,30 +204,64 @@ export function reportStorageUrl(storagePath: string): string {
   return `${SUPABASE_URL}/storage/v1/object/public/nf-reports/${storagePath}?t=${Date.now()}`;
 }
 
-export async function triggerWeeklyReport(
-  weekStart?: string,
-): Promise<{ ok: true; storage_path: string; nf_count: number; skipped?: boolean; message?: string } | { ok: false; error: string }> {
+export async function deleteOldReports(weekStart: string): Promise<void> {
   try {
-    const body = weekStart ? JSON.stringify({ week_start: weekStart }) : "{}";
     const res = await fetch(
-      `${SUPABASE_URL}/functions/v1/generate-weekly-report`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body },
+      `${SUPABASE_URL}/rest/v1/nf_reports?week_start=eq.${weekStart}&select=id,storage_path`,
+      { headers: { ...H, "Content-Type": "application/json" } },
     );
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      try {
-        const parsed = JSON.parse(text) as { error?: string };
-        return { ok: false, error: parsed.error ?? `Erro HTTP ${res.status}` };
-      } catch {
-        return { ok: false, error: `Erro HTTP ${res.status}: função pode ter excedido o tempo limite. Tente novamente.` };
-      }
+    if (!res.ok) return;
+    const existing = (await res.json()) as { id: string; storage_path: string }[];
+    for (const e of existing) {
+      await fetch(`${SUPABASE_URL}/storage/v1/object/nf-reports/${e.storage_path}`, {
+        method: "DELETE",
+        headers: H,
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/nf_reports?id=eq.${e.id}`, {
+        method: "DELETE",
+        headers: { ...H, Prefer: "return=minimal" },
+      });
     }
-    const data = await res.json() as { ok: boolean; storage_path?: string; nf_count?: number; error?: string; skipped?: boolean; message?: string };
-    if (!data.ok) return { ok: false, error: data.error ?? "Erro desconhecido" };
-    const out: { ok: true; storage_path: string; nf_count: number; skipped?: boolean; message?: string } = { ok: true, storage_path: data.storage_path ?? "", nf_count: data.nf_count ?? 0 };
-    if (data.skipped !== undefined) out.skipped = data.skipped;
-    if (data.message !== undefined) out.message = data.message;
-    return out;
+  } catch { /* ignora */ }
+}
+
+export async function saveReportToStorage(
+  pdfBytes: Uint8Array,
+  weekStart: string,
+  weekEnd: string,
+  weekLabel: string,
+  nfCount: number,
+): Promise<{ ok: true; storage_path: string } | { ok: false; error: string }> {
+  try {
+    await deleteOldReports(weekStart);
+
+    const storagePath = `${weekStart}_${Date.now()}.pdf`;
+
+    const uploadRes = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/nf-reports/${storagePath}`,
+      {
+        method: "POST",
+        headers: { ...H, "Content-Type": "application/pdf", "x-upsert": "true" },
+        body: new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" }),
+      },
+    );
+    if (!uploadRes.ok) throw new Error(`Upload falhou: ${uploadRes.status}`);
+
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/nf_reports`, {
+      method: "POST",
+      headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({
+        week_start: weekStart,
+        week_end: weekEnd,
+        week_label: weekLabel,
+        storage_path: storagePath,
+        nf_count: nfCount,
+        total_valor: 0,
+      }),
+    });
+    if (!insertRes.ok) throw new Error(`Insert falhou: ${insertRes.status}`);
+
+    return { ok: true, storage_path: storagePath };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

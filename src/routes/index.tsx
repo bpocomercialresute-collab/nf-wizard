@@ -30,8 +30,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
-import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, triggerWeeklyReport, type NFRecord, type NFReport } from "../lib/nf-storage";
-import { getWeekOptions } from "../lib/weekly-report";
+import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, saveReportToStorage, type NFRecord, type NFReport } from "../lib/nf-storage";
+import { getWeekOptions, fetchWeekNFs, generateWeeklyPDF, downloadPDF } from "../lib/weekly-report";
 import { signOut, getUserEmail } from "../lib/auth";
 
 // ---- Types ----
@@ -774,35 +774,43 @@ function Index() {
     setReportProgress(0);
     setLastReportUrl(null);
 
-    const fakeProgress = setInterval(() => {
-      setReportProgress((p) => (p < 88 ? p + 3 : p));
-    }, 800);
-
     try {
-      const weekStartStr = week.start.toISOString().split("T")[0]!;
-      const result = await triggerWeeklyReport(weekStartStr);
+      setReportProgress(2);
+      const nfs = await fetchWeekNFs(week.start, week.end);
+      if (nfs.length === 0) {
+        alert("Nenhuma NF encontrada nessa semana.");
+        setReportState("idle");
+        setReportProgress(0);
+        return;
+      }
 
-      clearInterval(fakeProgress);
-      setReportProgress(100);
+      setReportProgress(5);
+      const pdfBytes = await generateWeeklyPDF(nfs, week.label, (pct) => {
+        setReportProgress(Math.round(5 + pct * 0.8));
+      });
+
+      setReportProgress(88);
+      const weekStartStr = week.start.toISOString().split("T")[0]!;
+      const weekEndStr = week.end.toISOString().split("T")[0]!;
+      const result = await saveReportToStorage(pdfBytes, weekStartStr, weekEndStr, week.label, nfs.length);
+
+      setReportProgress(95);
 
       if (!result.ok) {
-        alert(`Erro ao gerar relatório: ${result.error}`);
+        alert(`Erro ao salvar relatório: ${result.error}`);
+        downloadPDF(pdfBytes, `NF_Wizard_Relatorio_${weekStartStr}.pdf`);
         setSavedReports(await listSavedReports());
         setReportState("idle");
         setReportProgress(0);
         return;
       }
 
-      if (result.storage_path) {
-        const url = reportStorageUrl(result.storage_path);
-        setLastReportUrl(url);
-        window.open(url, "_blank");
-      }
-
+      downloadPDF(pdfBytes, `NF_Wizard_Relatorio_${weekStartStr}.pdf`);
+      setLastReportUrl(reportStorageUrl(result.storage_path));
+      setReportProgress(100);
       setSavedReports(await listSavedReports());
       setReportState("done");
     } catch (err) {
-      clearInterval(fakeProgress);
       alert(`Erro inesperado: ${err instanceof Error ? err.message : String(err)}`);
       setSavedReports(await listSavedReports());
       setReportState("idle");
