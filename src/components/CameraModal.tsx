@@ -1,12 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import {
-  X, Camera, RotateCcw, Check, SwitchCamera,
-  AlertTriangle, Loader2, WifiOff,
+  X, Camera, RotateCcw, Check, SwitchCamera, AlertTriangle, Loader2,
 } from "lucide-react";
-import { loadOpenCV, scanDocument, detectPaper, canvasToFile } from "../lib/document-scan";
+import { scanDocument, canvasToFile } from "../lib/document-scan";
 
 type Step = "camera" | "processing" | "scanned";
-type CvStatus = "idle" | "loading" | "ready" | "error";
 
 type Props = {
   title?: string;
@@ -19,18 +17,13 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
   const streamRef = useRef<MediaStream | null>(null);
   const srcRef    = useRef<HTMLCanvasElement | null>(null);
 
-  const [step, setStep]         = useState<Step>("camera");
-  const [ready, setReady]       = useState(false);
+  const [step, setStep]             = useState<Step>("camera");
+  const [ready, setReady]           = useState(false);
   const [scannedUrl, setScannedUrl] = useState<string | null>(null);
-  const [detected, setDetected] = useState<boolean | null>(null); // null = no info yet
-  const [autoWarning, setAutoWarning] = useState(false);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [hasMultipleCams, setHasMultipleCams] = useState(false);
-  const [camError, setCamError] = useState<string | null>(null);
-  const [flash, setFlash]       = useState(false);
-  const [cvStatus, setCvStatus] = useState<CvStatus>("idle");
-
-  // ---- camera ----
+  const [camError, setCamError]     = useState<string | null>(null);
+  const [flash, setFlash]           = useState(false);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -41,7 +34,6 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
     stopStream();
     setReady(false);
     setCamError(null);
-    setDetected(null);
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setCamError("Câmera não suportada. Use Chrome ou Safari.");
@@ -67,36 +59,6 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-load OpenCV + jscanify in background
-  useEffect(() => {
-    setCvStatus("loading");
-    loadOpenCV()
-      .then(() => setCvStatus("ready"))
-      .catch(() => setCvStatus("error"));
-  }, []);
-
-  // Real-time paper detection — green/yellow border feedback
-  useEffect(() => {
-    if (step !== "camera" || !ready || cvStatus !== "ready") return;
-
-    let cancelled = false;
-    const video = videoRef.current;
-    if (!video) return;
-
-    const check = async () => {
-      if (cancelled) return;
-      const found = await detectPaper(video);
-      if (!cancelled) {
-        setDetected(found);
-        setTimeout(check, 600); // ~1.6fps — low enough to not block main thread
-      }
-    };
-
-    // Start after brief delay (let camera stabilize)
-    const t = setTimeout(check, 800);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [step, ready, cvStatus]);
-
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
@@ -109,8 +71,6 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
   });
 
   const handleClose = () => { stopStream(); onClose(); };
-
-  // ---- capture → auto-scan ----
 
   const capture = async () => {
     const video = videoRef.current;
@@ -129,20 +89,16 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
     stopStream();
     setStep("processing");
 
-    // yield to React to paint processing state before heavy compute
     await new Promise((r) => setTimeout(r, 30));
 
-    const result = await scanDocument(raw);
-    srcRef.current = result.canvas;
-    setScannedUrl(result.canvas.toDataURL("image/jpeg", 0.92));
-    setAutoWarning(!result.detected);
+    const { canvas } = await scanDocument(raw);
+    srcRef.current = canvas;
+    setScannedUrl(canvas.toDataURL("image/jpeg", 0.92));
     setStep("scanned");
   };
 
   const retake = async () => {
     setScannedUrl(null);
-    setAutoWarning(false);
-    setDetected(null);
     srcRef.current = null;
     setStep("camera");
     await startCamera(facingMode);
@@ -162,12 +118,6 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
     await startCamera(next);
   };
 
-  // Border color based on paper detection state
-  const borderColor =
-    detected === true  ? "border-green-400" :
-    detected === false ? "border-yellow-400" :
-    "border-primary";
-
   const showSwitch = hasMultipleCams && step === "camera";
 
   return (
@@ -184,23 +134,9 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
           <X className="size-5" />
         </button>
 
-        <div className="flex flex-col items-center">
-          <span className="text-sm font-semibold tracking-wide">
-            {step === "processing" ? "Escaneando..." : step === "scanned" ? "Documento pronto" : title}
-          </span>
-          {step === "camera" && cvStatus === "loading" && (
-            <span className="flex items-center gap-1 text-[10px] text-white/50">
-              <Loader2 className="size-2.5 animate-spin" />
-              Carregando scanner…
-            </span>
-          )}
-          {step === "camera" && cvStatus === "error" && (
-            <span className="flex items-center gap-1 text-[10px] text-yellow-400">
-              <WifiOff className="size-2.5" />
-              Scanner offline
-            </span>
-          )}
-        </div>
+        <span className="text-sm font-semibold tracking-wide">
+          {step === "processing" ? "Processando…" : step === "scanned" ? "Documento pronto" : title}
+        </span>
 
         {showSwitch ? (
           <button
@@ -256,39 +192,20 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
                     <div className="absolute inset-x-0 bottom-0 bg-black/50" style={{ top: "82%" }} />
                     <div className="absolute left-0 bg-black/50" style={{ top: "18%", bottom: "18%", right: "88%" }} />
                     <div className="absolute right-0 bg-black/50" style={{ top: "18%", bottom: "18%", left: "88%" }} />
-                    {/* Document boundary — color changes based on detection */}
-                    <div
-                      className="absolute"
-                      style={{ top: "18%", bottom: "18%", left: "12%", right: "12%" }}
-                    >
-                      {(["top-0 left-0 border-t-[3px] border-l-[3px] rounded-tl-lg",
-                         "top-0 right-0 border-t-[3px] border-r-[3px] rounded-tr-lg",
-                         "bottom-0 left-0 border-b-[3px] border-l-[3px] rounded-bl-lg",
-                         "bottom-0 right-0 border-b-[3px] border-r-[3px] rounded-br-lg",
+                    {/* Corner guides */}
+                    <div className="absolute" style={{ top: "18%", bottom: "18%", left: "12%", right: "12%" }}>
+                      {([
+                        "top-0 left-0 border-t-[3px] border-l-[3px] rounded-tl-lg",
+                        "top-0 right-0 border-t-[3px] border-r-[3px] rounded-tr-lg",
+                        "bottom-0 left-0 border-b-[3px] border-l-[3px] rounded-bl-lg",
+                        "bottom-0 right-0 border-b-[3px] border-r-[3px] rounded-br-lg",
                       ] as const).map((cls) => (
-                        <span
-                          key={cls}
-                          className={`absolute h-10 w-10 transition-colors duration-300 ${borderColor} ${cls}`}
-                        />
+                        <span key={cls} className={`absolute h-10 w-10 border-white ${cls}`} />
                       ))}
-
-                      {/* Status label */}
-                      <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-1.5">
-                        {detected === true && (
-                          <span className="rounded-full bg-green-500/80 px-2.5 py-0.5 text-[11px] font-semibold text-white">
-                            Documento detectado
-                          </span>
-                        )}
-                        {detected === false && (
-                          <span className="rounded-full bg-yellow-500/70 px-2.5 py-0.5 text-[11px] font-semibold text-white">
-                            Aponte para o documento
-                          </span>
-                        )}
-                        {detected === null && ready && (
-                          <span className="text-[11px] text-white/60">
-                            Posicione o documento dentro da moldura
-                          </span>
-                        )}
+                      <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+                        <span className="rounded-full bg-black/50 px-3 py-1 text-[11px] text-white/80">
+                          Posicione o documento dentro da moldura
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -308,29 +225,19 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
               </span>
             </div>
             <div className="text-center">
-              <p className="text-lg font-semibold">Escaneando documento…</p>
-              <p className="mt-1 text-sm text-white/60">
-                Detectando bordas e corrigindo perspectiva
-              </p>
+              <p className="text-lg font-semibold">Aprimorando imagem…</p>
+              <p className="mt-1 text-sm text-white/60">Aplicando contraste e limpeza</p>
             </div>
           </div>
         )}
 
         {/* Scanned result */}
         {step === "scanned" && scannedUrl && (
-          <div className="flex h-full flex-col">
-            <img
-              src={scannedUrl}
-              alt="Documento digitalizado"
-              className="min-h-0 flex-1 object-contain"
-            />
-            {autoWarning && (
-              <div className="flex items-center justify-center gap-2 bg-yellow-500/20 px-4 py-2 text-center text-xs font-medium text-yellow-300">
-                <AlertTriangle className="size-3.5 shrink-0" />
-                Bordas não detectadas — fundo sem contraste. Use fundo escuro e tente de novo.
-              </div>
-            )}
-          </div>
+          <img
+            src={scannedUrl}
+            alt="Documento digitalizado"
+            className="h-full w-full object-contain"
+          />
         )}
       </div>
 
@@ -343,13 +250,7 @@ export function CameraModal({ title = "Escanear documento", onCapture, onClose }
             onClick={capture}
             className="flex flex-col items-center gap-1.5 disabled:opacity-40"
           >
-            <span
-              className={`relative grid size-20 place-items-center rounded-full border-4 bg-white/10 transition-all duration-300 active:scale-95 ${
-                detected === true
-                  ? "border-green-400 shadow-[0_0_24px_rgba(74,222,128,0.5)] hover:bg-white/20"
-                  : "border-white hover:bg-white/20"
-              }`}
-            >
+            <span className="relative grid size-20 place-items-center rounded-full border-4 border-white bg-white/10 transition-all duration-300 active:scale-95 hover:bg-white/20">
               <Camera className="size-9 text-white" />
             </span>
             <span className="text-xs text-white/70">Escanear</span>
