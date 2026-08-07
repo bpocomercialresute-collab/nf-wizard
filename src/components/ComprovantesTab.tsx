@@ -26,7 +26,11 @@ import {
   BookOpen,
   MousePointerClick,
   Type,
+  LogOut,
+  Sparkles,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { signOut, getUserEmail } from "../lib/auth";
 import { useState, useCallback, useEffect } from "react";
 import {
   saveBoleto,
@@ -590,38 +594,62 @@ export function ComprovantesTab() {
 
   return (
     <div className="min-h-screen pb-28">
-      {/* Sub-header da aba */}
-      <div className="border-b border-border/50 bg-card/40 px-5 py-3">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
-              <FileDown className="size-4.5" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Comprovantes Fiscais</p>
-              <p className="text-xs text-muted-foreground">Escaneie e gerencie boletos com alertas de vencimento</p>
-            </div>
+      {/* Header */}
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-card/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3.5">
+          <img
+            src="/brand/varremaster-full.png"
+            alt="Varremaster"
+            className="h-9 w-auto shrink-0 select-none"
+            draggable={false}
+          />
+          <span className="hidden h-9 w-px bg-border sm:block" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15">
+            <FileDown className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="brand-text text-lg font-bold tracking-tight">Comprovantes Fiscais</h1>
+            <p className="truncate text-xs text-muted-foreground">
+              Escaneie e gerencie boletos com OCR em nuvem e alertas de vencimento
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={openAll}
-              className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20"
-            >
-              <Database className="size-4" />
-              <span className="hidden sm:inline">Todos os Boletos</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowManual(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
-            >
-              <BookOpen className="size-4" />
-              <span className="hidden sm:inline">Manual</span>
-            </button>
-          </div>
+          <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
+            <Sparkles className="size-3.5" />
+            OCR em nuvem — alta precisão
+          </span>
+          <button
+            type="button"
+            onClick={openAll}
+            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 lg:ml-0"
+          >
+            <Database className="size-4" />
+            <span className="hidden sm:inline">Todos os Boletos</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowManual(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <BookOpen className="size-4" />
+            <span className="hidden sm:inline">Manual</span>
+          </button>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <ScanLine className="size-4" />
+            <span className="hidden sm:inline">Notas Fiscais</span>
+          </Link>
+          <button
+            type="button"
+            title={`Sair (${getUserEmail()})`}
+            onClick={async () => { await signOut(); window.location.reload(); }}
+            className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
+          >
+            <LogOut className="size-4" />
+          </button>
         </div>
-      </div>
+      </header>
 
       {showManual && <ManualBoletoModal onClose={() => setShowManual(false)} />}
 

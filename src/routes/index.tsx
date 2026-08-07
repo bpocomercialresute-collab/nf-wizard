@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   UploadCloud,
   FileText,
@@ -30,7 +30,6 @@ import {
   Trash2,
   Receipt,
 } from "lucide-react";
-import { ComprovantesTab } from "../components/ComprovantesTab";
 import { useState, useCallback, useEffect } from "react";
 import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, saveReportToStorage, deleteReport, type NFRecord, type NFReport } from "../lib/nf-storage";
 import { getWeekOptions, fetchWeekNFs, generateWeeklyPDF, downloadPDF } from "../lib/weekly-report";
@@ -447,7 +446,6 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
 }
 
 function Index() {
-  const [activeTab, setActiveTab] = useState<"nf" | "comprovantes">("nf");
   const [nfFiles, setNfFiles] = useState<NFFile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTokens, setActiveTokens] = useState<string[]>(["{NUMERO}", "{DATA}", "{DESTINATARIO}"]);
@@ -868,70 +866,41 @@ function Index() {
               OCR de notas fiscais e renomeação automática de arquivos
             </p>
           </div>
-
-          {/* Tab switcher */}
-          <div className="ml-auto flex items-center rounded-xl border border-border bg-muted/60 p-1 lg:ml-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab("nf")}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                activeTab === "nf"
-                  ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <ScanLine className="size-3.5" />
-              <span className="hidden sm:inline">Notas Fiscais</span>
-            </button>
-            <span className="mx-1 h-4 w-px bg-border/60" />
-            <button
-              type="button"
-              onClick={() => setActiveTab("comprovantes")}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                activeTab === "comprovantes"
-                  ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Receipt className="size-3.5" />
-              <span className="hidden sm:inline">Comprovantes</span>
-            </button>
-          </div>
-
-          <span className="hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
+          <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
             <Sparkles className="size-3.5" />
             OCR em nuvem — alta precisão
           </span>
-
-          {activeTab === "nf" && (
-            <>
-              <button
-                type="button"
-                onClick={openAllNFs}
-                className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20"
-              >
-                <Database className="size-4" />
-                <span className="hidden sm:inline">Todas NFs</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowReport(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
-              >
-                <FileDown className="size-4" />
-                <span className="hidden sm:inline">Relatório</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowManual(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
-              >
-                <BookOpen className="size-4" />
-                <span className="hidden sm:inline">Manual</span>
-              </button>
-            </>
-          )}
-
+          <button
+            type="button"
+            onClick={openAllNFs}
+            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 lg:ml-0"
+          >
+            <Database className="size-4" />
+            <span className="hidden sm:inline">Todas NFs</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowReport(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <FileDown className="size-4" />
+            <span className="hidden sm:inline">Relatório</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowManual(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <BookOpen className="size-4" />
+            <span className="hidden sm:inline">Manual</span>
+          </button>
+          <Link
+            to="/comprovantes"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+          >
+            <Receipt className="size-4" />
+            <span className="hidden sm:inline">Comprovantes</span>
+          </Link>
           <button
             type="button"
             title={`Sair (${getUserEmail()})`}
@@ -943,14 +912,10 @@ function Index() {
         </div>
       </header>
 
-      {/* Aba Comprovantes Fiscais */}
-      {activeTab === "comprovantes" && <ComprovantesTab />}
+      {showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
 
-      {/* Aba Notas Fiscais */}
-      {activeTab === "nf" && showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
-
-      {/* Modal — Todas NFs (só na aba NF) */}
-      {activeTab === "nf" && showAllNFs && (
+      {/* Modal — Todas NFs */}
+      {showAllNFs && (
         <div
           onClick={() => { setShowAllNFs(false); setEditingNFId(null); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
@@ -1208,8 +1173,8 @@ function Index() {
         </div>
       )}
 
-      {/* Modal — Relatório Semanal (só na aba NF) */}
-      {activeTab === "nf" && showReport && (
+      {/* Modal — Relatório Semanal */}
+      {showReport && (
         <div
           onClick={() => { if (reportState !== "generating") setShowReport(false); }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
@@ -1430,7 +1395,7 @@ function Index() {
         </div>
       )}
 
-      {activeTab === "nf" && <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
         {/* Zona 1 — Como salvar (oculto quando PATTERN_UI_ENABLED = false) */}
         {PATTERN_UI_ENABLED && <section className="surface animate-rise rounded-2xl border border-border/70 p-5">
           <p className="text-sm font-medium text-foreground">Como salvar o arquivo?</p>
@@ -1909,37 +1874,35 @@ function Index() {
             )}
           </section>
         )}
-      </main>}
+      </main>
 
-      {/* Zona 4 — Footer fixo (só aba NF) */}
-      {activeTab === "nf" && (
-        <footer className="fixed inset-x-0 bottom-0 border-t border-border bg-card/85 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-end gap-3 px-5 py-3">
-            <span className="mr-auto text-sm text-muted-foreground">
-              {nfFiles.length > 0 ? (
-                <>
-                  <span className="font-semibold text-foreground">{selectedCount}</span> de{" "}
-                  <span className="font-semibold text-foreground">{nfFiles.length}</span> arquivos
-                  selecionados
-                  {outputDirName && <span className="ml-2 text-primary">→ {outputDirName}</span>}
-                </>
-              ) : (
-                "Nenhum arquivo carregado"
-              )}
-            </span>
-            <button
-              id="btn-download-selected"
-              type="button"
-              disabled={selectedCount === 0}
-              onClick={downloadSelected}
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Download className="size-4" />
-              Baixar selecionados
-            </button>
-          </div>
-        </footer>
-      )}
+      {/* Zona 4 — Footer fixo */}
+      <footer className="fixed inset-x-0 bottom-0 border-t border-border bg-card/85 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-end gap-3 px-5 py-3">
+          <span className="mr-auto text-sm text-muted-foreground">
+            {nfFiles.length > 0 ? (
+              <>
+                <span className="font-semibold text-foreground">{selectedCount}</span> de{" "}
+                <span className="font-semibold text-foreground">{nfFiles.length}</span> arquivos
+                selecionados
+                {outputDirName && <span className="ml-2 text-primary">→ {outputDirName}</span>}
+              </>
+            ) : (
+              "Nenhum arquivo carregado"
+            )}
+          </span>
+          <button
+            id="btn-download-selected"
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={downloadSelected}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="size-4" />
+            Baixar selecionados
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
