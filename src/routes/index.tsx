@@ -849,34 +849,38 @@ function Index() {
   // ---- Render ----
 
   return (
-    <div className="min-h-screen pb-28">
+    <div className="min-h-screen pb-24 sm:pb-28">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-border/70 bg-card/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3.5">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5 sm:py-3.5">
           <img
             src="/brand/varremaster-full.png"
             alt="Varremaster"
-            className="h-9 w-auto shrink-0 select-none"
+            className="h-7 w-auto shrink-0 select-none sm:h-9"
             draggable={false}
           />
           <span className="hidden h-9 w-px bg-border sm:block" />
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15">
+          <span className="hidden size-10 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15 sm:grid">
             <ScanLine className="size-5" />
           </span>
-          <div className="min-w-0">
+          <div className="hidden min-w-0 sm:block">
             <h1 className="brand-text text-lg font-bold tracking-tight">NF Wizard</h1>
             <p className="truncate text-xs text-muted-foreground">
               OCR de notas fiscais e renomeação automática de arquivos
             </p>
           </div>
-          <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
+
+          {/* Spacer */}
+          <span className="flex-1" />
+
+          <span className="hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary lg:inline-flex">
             <Sparkles className="size-3.5" />
             OCR em nuvem — alta precisão
           </span>
           <button
             type="button"
             onClick={openAllNFs}
-            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 lg:ml-0"
+            className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-2.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 sm:px-3.5"
           >
             <Database className="size-4" />
             <span className="hidden sm:inline">Todas NFs</span>
@@ -884,7 +888,7 @@ function Index() {
           <button
             type="button"
             onClick={() => setShowReport(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+            className="hidden items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary sm:inline-flex"
           >
             <FileDown className="size-4" />
             <span className="hidden sm:inline">Relatório</span>
@@ -892,14 +896,14 @@ function Index() {
           <button
             type="button"
             onClick={() => setShowManual(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+            className="hidden items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary md:inline-flex"
           >
             <BookOpen className="size-4" />
-            <span className="hidden sm:inline">Manual</span>
+            <span>Manual</span>
           </button>
           <Link
             to="/comprovantes"
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-2.5 py-2 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary sm:px-3.5"
           >
             <Receipt className="size-4" />
             <span className="hidden sm:inline">Comprovantes</span>
@@ -908,7 +912,7 @@ function Index() {
             type="button"
             title={`Sair (${getUserEmail()})`}
             onClick={async () => { await signOut(); window.location.reload(); }}
-            className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive"
+            className="grid size-9 shrink-0 place-items-center rounded-xl border border-border bg-secondary text-muted-foreground transition hover:border-destructive hover:text-destructive sm:size-10"
           >
             <LogOut className="size-4" />
           </button>
@@ -1409,7 +1413,7 @@ function Index() {
         </div>
       )}
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6">
+      <main className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-5 sm:py-6">
         {/* Zona 1 — Como salvar (oculto quando PATTERN_UI_ENABLED = false) */}
         {PATTERN_UI_ENABLED && <section className="surface animate-rise rounded-2xl border border-border/70 p-5">
           <p className="text-sm font-medium text-foreground">Como salvar o arquivo?</p>
@@ -1687,7 +1691,7 @@ function Index() {
                   <h2 className="mb-3 text-sm font-semibold">Pré-visualização</h2>
                   <div
                     id="preview-image"
-                    className="grid h-72 place-items-center overflow-hidden rounded-xl border border-border bg-muted/40"
+                    className="grid h-48 place-items-center overflow-hidden rounded-xl border border-border bg-muted/40 sm:h-72"
                   >
                     {activeFile.previewUrl ? (
                       <img
@@ -1905,17 +1909,17 @@ function Index() {
 
       {/* Zona 4 — Footer fixo */}
       <footer className="fixed inset-x-0 bottom-0 border-t border-border bg-card/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-end gap-3 px-5 py-3">
-          <span className="mr-auto text-sm text-muted-foreground">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5 sm:py-3">
+          <span className="mr-auto min-w-0 text-xs text-muted-foreground sm:text-sm">
             {nfFiles.length > 0 ? (
               <>
-                <span className="font-semibold text-foreground">{selectedCount}</span> de{" "}
-                <span className="font-semibold text-foreground">{nfFiles.length}</span> arquivos
-                selecionados
-                {outputDirName && <span className="ml-2 text-primary">→ {outputDirName}</span>}
+                <span className="font-semibold text-foreground">{selectedCount}</span>
+                <span className="hidden sm:inline"> de <span className="font-semibold text-foreground">{nfFiles.length}</span> arquivos selecionados</span>
+                <span className="sm:hidden">/{nfFiles.length} sel.</span>
+                {outputDirName && <span className="ml-2 hidden text-primary sm:inline">→ {outputDirName}</span>}
               </>
             ) : (
-              "Nenhum arquivo carregado"
+              <span className="hidden sm:inline">Nenhum arquivo carregado</span>
             )}
           </span>
           <button
@@ -1923,10 +1927,22 @@ function Index() {
             type="button"
             disabled={selectedCount === 0}
             onClick={downloadSelected}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:py-2.5 sm:text-sm"
           >
             <Download className="size-4" />
-            Baixar selecionados
+            <span className="hidden sm:inline">Baixar selecionados</span>
+            <span className="sm:hidden">Baixar</span>
+          </button>
+          <button
+            id="btn-download-zip"
+            type="button"
+            disabled={nfFiles.filter((f) => f.status === "concluido").length === 0}
+            onClick={downloadAllZip}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:py-2.5 sm:text-sm"
+          >
+            <FileArchive className="size-4" />
+            <span className="hidden sm:inline">Baixar todos (ZIP)</span>
+            <span className="sm:hidden">ZIP</span>
           </button>
         </div>
       </footer>

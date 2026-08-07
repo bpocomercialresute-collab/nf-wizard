@@ -183,6 +183,141 @@ export function estimateOutputSize(quad: Quad): { w: number; h: number } {
   return { w: Math.round(rawW * scale), h: Math.round(rawH * scale) };
 }
 
+// ---- OpenCV.js auto document detection ----
+
+/* global cv is loaded dynamically from CDN */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  interface Window { cv: any; }
+}
+
+const OPENCV_CDN = "https://docs.opencv.org/4.10.0/opencv.js";
+let _cvPromise: Promise<void> | null = null;
+
+export function loadOpenCV(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.cv?.Mat) return Promise.resolve();
+  if (_cvPromise) return _cvPromise;
+
+  _cvPromise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = OPENCV_CDN;
+    script.async = true;
+
+    const poll = setInterval(() => {
+      if (window.cv?.Mat) { clearInterval(poll); resolve(); }
+    }, 100);
+
+    script.onerror = () => {
+      clearInterval(poll);
+      _cvPromise = null;
+      reject(new Error("Falha ao carregar OpenCV.js"));
+    };
+
+    setTimeout(() => {
+      clearInterval(poll);
+      if (!window.cv?.Mat) { _cvPromise = null; reject(new Error("Timeout OpenCV.js")); }
+    }, 40_000);
+
+    document.head.appendChild(script);
+  });
+
+  return _cvPromise;
+}
+
+// Order 4 points as [tl, tr, br, bl]
+function orderQuad(pts: Point[]): Quad {
+  const sum  = pts.map((p) => p[0] + p[1]);
+  const diff = pts.map((p) => p[0] - p[1]);
+  const minSum = Math.min(...(sum as number[]));
+  const maxSum = Math.max(...(sum as number[]));
+  const minDiff = Math.min(...(diff as number[]));
+  const maxDiff = Math.max(...(diff as number[]));
+  const tl = pts[sum.indexOf(minSum)]!;
+  const br = pts[sum.indexOf(maxSum)]!;
+  const tr = pts[diff.indexOf(minDiff)]!;
+  const bl = pts[diff.indexOf(maxDiff)]!;
+  return [tl, tr, br, bl];
+}
+
+/**
+ * Detect document corners in `src` using OpenCV.js.
+ * loadOpenCV() must have resolved before calling this.
+ * Returns null when no clear document boundary found.
+ */
+export function autoDetectDocument(src: HTMLCanvasElement): Quad | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cv = window.cv as any;
+  if (!cv?.Mat) return null;
+
+  try {
+    const MAX = 1000;
+    const scale = Math.min(1, MAX / Math.max(src.width, src.height));
+    const sw = Math.round(src.width * scale);
+    const sh = Math.round(src.height * scale);
+    const imgArea = sw * sh;
+
+    const mat = cv.imread(src);
+
+    const small = new cv.Mat();
+    cv.resize(mat, small, new cv.Size(sw, sh));
+    mat.delete();
+
+    const gray = new cv.Mat();
+    cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+
+    const edges = new cv.Mat();
+    cv.Canny(gray, edges, 50, 200);
+    gray.delete();
+
+    const kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+    cv.dilate(edges, edges, kernel);
+    kernel.delete();
+
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    edges.delete();
+    hierarchy.delete();
+    small.delete();
+
+    let bestArea = 0;
+    let bestPts: Point[] | null = null;
+
+    for (let i = 0; i < (contours.size() as number); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt) as number;
+
+      if (area < imgArea * 0.05 || area > imgArea * 0.98) { cnt.delete(); continue; }
+
+      const peri = cv.arcLength(cnt, true) as number;
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+      if ((approx.rows as number) === 4 && area > bestArea) {
+        bestArea = area;
+        const d = approx.data32S as Int32Array;
+        bestPts = [
+          [d[0]! / scale, d[1]! / scale],
+          [d[2]! / scale, d[3]! / scale],
+          [d[4]! / scale, d[5]! / scale],
+          [d[6]! / scale, d[7]! / scale],
+        ];
+      }
+
+      approx.delete();
+      cnt.delete();
+    }
+
+    contours.delete();
+
+    return bestPts ? orderQuad(bestPts) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Canvas → File ----
 
 export async function canvasToFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
