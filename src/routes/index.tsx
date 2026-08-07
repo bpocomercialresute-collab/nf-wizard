@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CameraModal } from "../components/CameraModal";
 import {
   UploadCloud,
   FileText,
@@ -30,7 +29,6 @@ import {
   Check,
   Trash2,
   Receipt,
-  Camera,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { saveNF, listNFs, updateNF, deleteNF, storageUrl, fmtDate, listSavedReports, reportStorageUrl, saveReportToStorage, deleteReport, type NFRecord, type NFReport } from "../lib/nf-storage";
@@ -448,7 +446,6 @@ function ManualModal({ onClose, pattern }: { onClose: () => void; pattern: strin
 }
 
 function Index() {
-  const [showCamera, setShowCamera] = useState(false);
   const [nfFiles, setNfFiles] = useState<NFFile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTokens, setActiveTokens] = useState<string[]>(["{NUMERO}", "{DATA}", "{DESTINATARIO}"]);
@@ -920,17 +917,6 @@ function Index() {
       </header>
 
       {showManual && <ManualModal onClose={() => setShowManual(false)} pattern={pattern} />}
-
-      {showCamera && (
-        <CameraModal
-          title="Escanear nota fiscal"
-          onClose={() => setShowCamera(false)}
-          onCapture={(file) => {
-            setShowCamera(false);
-            processFile(file);
-          }}
-        />
-      )}
 
       {/* Modal — Todas NFs */}
       {showAllNFs && (
@@ -1568,18 +1554,6 @@ function Index() {
             />
           </label>
 
-          {/* Botão escanear */}
-          <button
-            type="button"
-            onClick={() => setShowCamera(true)}
-            className="group surface flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border px-8 py-10 text-center transition-all duration-300 hover:border-primary hover:bg-primary/5 sm:w-52"
-          >
-            <span className="grid size-14 place-items-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/15 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-105">
-              <Camera className="size-7" />
-            </span>
-            <span className="text-base font-medium">Escanear câmera</span>
-            <span className="text-sm text-muted-foreground">Abre câmera ao vivo</span>
-          </button>
         </section>
 
         {/* Empty state */}
